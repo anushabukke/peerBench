@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { PromptService } from "@/services/prompt.service";
-import { withAuth } from "@/middleware";
 import { PromptTypes } from "@peerbench/sdk";
+import { withAuth } from "@/route-wrappers/with-auth";
 
 const schema = z.object({
   promptSetId: z.coerce.number().optional(),
@@ -26,12 +26,15 @@ async function getHandler(request: NextRequest) {
   }
 
   const prompts = await PromptService.getPrompts({
-    promptSetId: validation.data.promptSetId,
     page: validation.data.page,
     pageSize: validation.data.pageSize,
 
-    // TODO: Only Forest Validators are using this endpoint so they only work with multiple choice prompts
-    type: PromptTypes.MultipleChoice,
+    filters: {
+      promptSetId: validation.data.promptSetId,
+
+      // TODO: Only Forest Validators are using this endpoint so they only work with multiple choice prompts
+      type: PromptTypes.MultipleChoice,
+    },
   });
 
   return NextResponse.json(prompts);

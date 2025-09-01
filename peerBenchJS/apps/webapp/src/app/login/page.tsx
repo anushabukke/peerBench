@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { motion } from "framer-motion";
-import Link from "next/link";
+import { useState, useTransition, useEffect } from "react";
+import { motion } from "motion/react";
+import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { Button } from "@/components/ui/button";
-import { signIn } from "@/app/actions/auth";
-import { useRouter } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { signIn } from "@/lib/actions/auth";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 export const fetchCache = "force-no-store";
 
@@ -27,8 +37,22 @@ type LoginFormData = yup.InferType<typeof loginSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  // Handle authentication code from password reset
+  useEffect(() => {
+    const code = searchParams.get("code");
+    if (code) {
+      console.log("Login page received auth code:", code);
+      // This is likely from a password reset, redirect to auth callback
+      const authCallbackUrl = `/auth/callback?code=${code}&next=/reset-password`;
+      console.log("Redirecting to auth callback:", authCallbackUrl);
+      router.push(authCallbackUrl);
+    }
+  }, [searchParams, router]);
 
   const {
     register,
@@ -55,84 +79,140 @@ export default function LoginPage() {
         setError(result.error);
         return;
       }
-      router.push("/dashboard");
+
+      // Use React's useTransition for smooth routing
+      startTransition(() => {
+        router.push("/dashboard");
+      });
     } catch (error) {
       console.error("Login error:", error);
       setError("An error occurred. Please try again.");
+    } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4">
+    <main className="min-h-screen flex items-center justify-center p-4 bg-background">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+        initial={{ opacity: 0, y: 20, scale: 0.95 }}
+        animate={{
+          opacity: isPending ? 0 : 1,
+          y: isPending ? -20 : 0,
+          scale: isPending ? 0.95 : 1,
+        }}
+        transition={{
+          duration: isPending ? 0.3 : 0.6,
+          ease: "easeOut",
+        }}
         className="w-full max-w-md"
       >
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          <div className="bg-gradient-to-r from-gray-600 to-gray-600 p-6 text-center">
-            <h1 className="text-2xl font-bold text-white">Welcome Back</h1>
-            <p className="text-gray-100 mt-2">Sign in to your account</p>
-          </div>
+        <Card className="shadow-2xl border-0 bg-card/95 backdrop-blur-sm">
+          <CardHeader className="text-center pb-6">
+            <motion.div
+              className="flex justify-center mb-4"
+              animate={{
+                scale: isPending ? 0.9 : 1,
+                opacity: isPending ? 0.7 : 1,
+              }}
+              transition={{ duration: 0.3 }}
+            >
+              <Image
+                src="/logo.png"
+                alt="PeerBench Logo"
+                width={120}
+                height={40}
+                className="h-12 w-auto"
+                priority
+              />
+            </motion.div>
+            <motion.div
+              animate={{
+                y: isPending ? -10 : 0,
+                opacity: isPending ? 0.8 : 1,
+              }}
+              transition={{ duration: 0.3 }}
+            >
+              <CardTitle className="text-3xl font-bold text-card-foreground">
+                Welcome Back
+              </CardTitle>
+              <CardDescription className="text-base text-muted-foreground mt-2">
+                Sign in to your peerBench account
+              </CardDescription>
+            </motion.div>
+          </CardHeader>
 
-          <div className="p-8">
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              <div>
+          <CardContent className="space-y-6">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+              <div className="space-y-2">
                 <label
                   htmlFor="email"
-                  className="block text-sm font-medium text-gray-700"
+                  className="block text-sm font-semibold text-card-foreground"
                 >
-                  Email
+                  Email Address
                 </label>
-                <div className="mt-1">
-                  <input
-                    id="email"
-                    type="email"
-                    autoComplete="email"
-                    {...register("email")}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all duration-200 text-black disabled:opacity-50 disabled:cursor-not-allowed"
-                    placeholder="Enter your email"
-                  />
-                  {errors.email && (
-                    <p className="mt-1 text-sm text-red-500">
-                      {errors.email.message}
-                    </p>
-                  )}
-                </div>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  {...register("email")}
+                  placeholder="Enter your email"
+                  className="h-11 text-base"
+                />
+                {errors.email && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-sm text-destructive flex items-center gap-1"
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    {errors.email.message}
+                  </motion.p>
+                )}
               </div>
 
-              <div>
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Password
-                </label>
-                <div className="mt-1">
-                  <input
-                    id="password"
-                    type="password"
-                    autoComplete="current-password"
-                    {...register("password")}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent transition-all duration-200 text-black disabled:opacity-50 disabled:cursor-not-allowed"
-                    placeholder="Enter your password"
-                  />
-                  {errors.password && (
-                    <p className="mt-1 text-sm text-red-500">
-                      {errors.password.message}
-                    </p>
-                  )}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-semibold text-card-foreground"
+                  >
+                    Password
+                  </label>
+                  <Link
+                    href="/forgot-password"
+                    className="text-sm text-primary hover:text-primary/80 transition-colors duration-200"
+                  >
+                    Forgot password?
+                  </Link>
                 </div>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  {...register("password")}
+                  placeholder="Enter your password"
+                  className="h-11 text-base"
+                />
+                {errors.password && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-sm text-destructive flex items-center gap-1"
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    {errors.password.message}
+                  </motion.p>
+                )}
               </div>
 
               {error && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-red-500 text-sm text-center"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-destructive text-sm text-center flex items-center justify-center gap-2"
                 >
+                  <AlertCircle className="w-4 h-4" />
                   {error}
                 </motion.div>
               )}
@@ -140,32 +220,13 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="w-full"
+                className="w-full h-12 text-base font-semibold"
                 variant="default"
                 size="default"
               >
                 {isLoading ? (
-                  <span className="flex items-center justify-center">
-                    <svg
-                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      ></circle>
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      ></path>
-                    </svg>
+                  <span className="flex items-center justify-center gap-2">
+                    <Loader2 className="animate-spin h-5 w-5 text-primary-foreground" />
                     Signing in...
                   </span>
                 ) : (
@@ -174,7 +235,7 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 text-center">
+            {/*  <div className="mt-6 text-center">
               <p className="text-sm text-gray-600">
                 Don&apos;t have an account?{" "}
                 <Link
@@ -184,9 +245,9 @@ export default function LoginPage() {
                   Sign up
                 </Link>
               </p>
-            </div>
-          </div>
-        </div>
+            </div> */}
+          </CardContent>
+        </Card>
       </motion.div>
     </main>
   );

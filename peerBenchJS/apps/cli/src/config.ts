@@ -1,12 +1,9 @@
 import { z } from "zod";
 import { red } from "ansis";
-import dotenv from "@dotenvx/dotenvx";
 import { join } from "path";
 import { mkdirSync } from "fs";
 import { LogLevels, NodeEnvs } from "./types";
-import { Address, privateKeyToAccount } from "viem/accounts";
-
-dotenv.config({ ignore: ["MISSING_ENV_FILE"], logLevel: "blank", quiet: true });
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 /**
  * Parses the environment variables based on the given fields.
@@ -36,10 +33,10 @@ const env = parseEnvVariables({
   NODE_ENV: z.enum(NodeEnvs).default("dev"),
   LOG_LEVEL: z.enum(LogLevels).default("debug"),
   COOL_DOWN_INTERVAL: z.coerce.number().default(2000),
-  PRIVATE_KEY: z.string().nonempty(),
+  PRIVATE_KEY: z.string().nonempty().optional(),
 });
 
-const VALIDATOR_ACCOUNT = privateKeyToAccount(env.PRIVATE_KEY as Address);
+const VALIDATOR_ACCOUNT = privateKeyToAccount(generatePrivateKey());
 export const config = {
   ...env,
   OUTPUT_DIR: join(process.cwd(), "data", "output"),

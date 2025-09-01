@@ -3,8 +3,6 @@ import { GET as FileGET } from "../route";
 
 export const revalidate = 0;
 
-// No need to authenticate this route since
-// it calls the other GET handler which is authenticated.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ cid: string }> }

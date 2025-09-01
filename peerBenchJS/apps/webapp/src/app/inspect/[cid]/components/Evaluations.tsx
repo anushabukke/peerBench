@@ -2,23 +2,23 @@
 
 import { useState, useMemo } from "react";
 import { EvaluationData } from "@/services/evaluation.service";
-import EvaluationItem from "./EvaluationItem";
-import Select, { type SingleValue } from "react-select";
-import dynamic from "next/dynamic";
+import EvaluationItem from "./evaluation-item";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { type User } from "@supabase/supabase-js";
 
-type OptionType = {
-  value: number;
-  label: string;
-};
-
-// Create a client-only Select component
-const ClientSelect = dynamic(() => Promise.resolve(Select), {
-  ssr: false,
-}) as typeof Select;
-
-export default function Evaluations(props: { evaluations: EvaluationData[] }) {
-  const { evaluations } = props;
-
+export default function Evaluations({
+  evaluations,
+  user,
+}: {
+  evaluations: EvaluationData[];
+  user: User | null;
+}) {
   // Extract unique provider IDs from evaluations
   const providerOptions = useMemo(() => {
     const ids = Array.from(
@@ -31,51 +31,52 @@ export default function Evaluations(props: { evaluations: EvaluationData[] }) {
     return ids.map((id) => ({ value: id, label: `Provider ${id}` }));
   }, [evaluations]);
 
-  const [selectedProviderId, setSelectedProviderId] = useState<number | null>(
-    null
-  );
+  const [selectedProviderId, setSelectedProviderId] = useState<string>("all");
+
   return (
     <>
-      {providerOptions.length > 0 && (
-        <div>
+      {providerOptions.length > 1 && (
+        <div className="mb-6">
           <label
             htmlFor="provider-filter"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
+            className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
           >
-            Filter by Provider ID
+            Filters
           </label>
-          <ClientSelect<OptionType>
-            inputId="provider-filter"
-            options={providerOptions}
-            isClearable
-            value={
-              providerOptions.find((o) => o.value === selectedProviderId) ||
-              null
-            }
-            onChange={(option: SingleValue<OptionType>) => {
-              setSelectedProviderId(option ? option.value : null);
-            }}
-            className="mt-1"
-            classNamePrefix="react-select"
-            placeholder="Select Provider ID..."
-          />
+          <Select
+            value={selectedProviderId}
+            onValueChange={setSelectedProviderId}
+          >
+            <SelectTrigger className="bg-white dark:bg-gray-800">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Providers</SelectItem>
+              {providerOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value.toString()}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       )}
 
       <div className="space-y-4">
         {evaluations.map((evaluation, index) => {
           if (
-            selectedProviderId !== null &&
-            evaluation.providerId !== selectedProviderId
+            selectedProviderId !== "all" &&
+            evaluation.providerId !== parseInt(selectedProviderId)
           ) {
-            return null; // Skip this session if it doesn't match the filter
+            return null;
           }
 
           return (
             <EvaluationItem
               key={evaluation.id}
-              index={index}
+              evaluationIndex={index}
               evaluation={evaluation}
+              user={user}
             />
           );
         })}

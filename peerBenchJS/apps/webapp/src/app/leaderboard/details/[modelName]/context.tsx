@@ -3,10 +3,10 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { createContext, useContext, useTransition } from "react";
 
-export type FilterContextOptionType = {
+export type FilterOptionType = {
   value: string;
   label: string;
-  type: "promptSet" | "protocol";
+  type?: "promptSet" | "protocol";
 };
 export type FilterProviderOptionType = {
   value: string;
@@ -15,12 +15,17 @@ export type FilterProviderOptionType = {
 
 type PageContextValue = {
   isRouting: boolean;
-  initialContextFilter: FilterContextOptionType | null;
-  initialProviderFilter: FilterProviderOptionType | null;
-  contexts: FilterContextOptionType[];
-  providers: FilterProviderOptionType[];
-  applyContextFilter: (context: FilterContextOptionType | null) => void;
-  applyProviderFilter: (provider: FilterProviderOptionType | null) => void;
+  filters: {
+    context: FilterOptionType | null;
+    provider: FilterOptionType | null;
+    promptType: FilterOptionType | null;
+  };
+  filterOptions: {
+    contexts: FilterOptionType[];
+    providers: FilterOptionType[];
+    promptTypes: FilterOptionType[];
+  };
+  applyFilters: (filters: Record<string, FilterOptionType | null>) => void;
   navigate: (url: string) => void;
 };
 
@@ -28,55 +33,63 @@ const PageContext = createContext<PageContextValue | undefined>(undefined);
 
 export const PageContextProvider = (props: {
   children: React.ReactNode;
-  contexts: FilterContextOptionType[];
-  providers: FilterProviderOptionType[];
+  contexts: FilterOptionType[];
+  providers: FilterOptionType[];
+  promptTypes: FilterOptionType[];
   initialContextFilter?: string;
   initialProviderFilter?: string;
+  initialPromptTypeFilter?: string;
 }) => {
-  const selectedContextFilter = props.contexts.find(
-    (context) => context.value === props.initialContextFilter
-  );
-  const selectedProviderFilter = props.providers.find(
-    (provider) => provider.value === props.initialProviderFilter
-  );
+  // const selectedContextFilter = props.contexts.find(
+  //   (context) => context.value === props.initialContextFilter
+  // );
+  // const selectedProviderFilter = props.providers.find(
+  //   (provider) => provider.value === props.initialProviderFilter
+  // );
 
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isRouting, startTransition] = useTransition();
 
-  const applyContextFilter = (context: FilterContextOptionType | null) => {
+  // Helper function to find filter by value
+  const findFilterByValue = (options: FilterOptionType[], value?: string) => {
+    return value
+      ? options.find((option) => option.value === value) || null
+      : null;
+  };
+
+  // Unified: apply one or more filters at once
+  const applyFilters = (filters: Record<string, FilterOptionType | null>) => {
     startTransition(() => {
       const params = new URLSearchParams(searchParams.toString());
-      if (context?.type === "promptSet") {
-        params.set("promptSet", context.value);
-        params.delete("protocol");
-      } else if (context?.type === "protocol") {
-        params.set("protocol", context.value);
-        params.delete("promptSet");
-      } else {
-        params.delete("promptSet");
-        params.delete("protocol");
-      }
+      Object.entries(filters).forEach(([filterKey, value]) => {
+        // Special handling for context filter
+        if (filterKey === "context") {
+          if (value?.type === "promptSet") {
+            params.set("promptSet", value.value);
+            params.delete("protocol");
+          } else if (value?.type === "protocol") {
+            params.set("protocol", value.value);
+            params.delete("promptSet");
+          } else {
+            params.delete("promptSet");
+            params.delete("protocol");
+          }
+        } else {
+          // Handle other filters normally
+          if (!value) {
+            params.delete(filterKey);
+          } else {
+            params.set(filterKey, value.value);
+          }
+        }
+      });
 
       // Reset page to 1 if it's set
       if (params.has("page")) {
         params.set("page", "1");
       }
-
-      router.push(`?${params.toString()}`);
-    });
-  };
-
-  const applyProviderFilter = (provider: FilterProviderOptionType | null) => {
-    startTransition(() => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (!provider) {
-        params.delete("provider");
-      } else {
-        params.set("provider", provider.value);
-      }
-
-      router.push(`?${params.toString()}`);
+      router.replace(`?${params.toString()}`);
     });
   };
 
@@ -100,16 +113,40 @@ export const PageContextProvider = (props: {
     });
   };
 
+  // Helper function to find context filter from promptSet or protocol params
+  const findContextFilter = () => {
+    const promptSet = searchParams.get("promptSet");
+    const protocol = searchParams.get("protocol");
+
+    if (promptSet) {
+      return findFilterByValue(props.contexts, promptSet);
+    } else if (protocol) {
+      return findFilterByValue(props.contexts, protocol);
+    }
+    return null;
+  };
+
   return (
     <PageContext.Provider
       value={{
         isRouting,
-        initialContextFilter: selectedContextFilter || null,
-        initialProviderFilter: selectedProviderFilter || null,
-        contexts: props.contexts,
-        providers: props.providers,
-        applyContextFilter,
-        applyProviderFilter,
+        filters: {
+          context: findContextFilter(),
+          provider: findFilterByValue(
+            props.providers,
+            searchParams.get("provider") || undefined
+          ),
+          promptType: findFilterByValue(
+            props.promptTypes,
+            searchParams.get("promptType") || undefined
+          ),
+        },
+        filterOptions: {
+          contexts: props.contexts,
+          providers: props.providers,
+          promptTypes: props.promptTypes,
+        },
+        applyFilters,
         navigate,
       }}
     >

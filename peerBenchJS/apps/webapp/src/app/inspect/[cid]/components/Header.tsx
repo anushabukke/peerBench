@@ -29,7 +29,7 @@ export default function Header(props: { evaluationCount: number }) {
 
       <div
         id="header"
-        className="mb-8 bg-white dark:bg-gray-800 rounded-xl p-6 shadow-lg"
+        className="mb-8 bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-300 dark:border-gray-600"
       >
         <h1 className="text-3xl font-bold mb-2">Evaluation Results</h1>
         <p className="text-gray-500 dark:text-gray-400">

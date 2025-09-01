@@ -6,7 +6,7 @@ import * as cheerio from "cheerio";
  * TODO: Write a description for this collector
  */
 export class PubMedCollector extends AbstractRSSCollector<PubMedCollectedData> {
-  identifier = "pubmed";
+  readonly identifier = "pubmed";
   feedSchema = z.object({
     rss: z.object({
       channel: z.object({

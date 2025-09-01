@@ -1,6 +1,6 @@
+import { withAuth } from "@/route-wrappers/with-auth";
 import { PromptSetService } from "@/services/promptset.service";
 import { type NextRequest, NextResponse } from "next/server";
-import { withAuth } from "@/middleware";
 
 export const revalidate = 0;
 

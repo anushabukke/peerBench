@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { cryptoRandom } from "./crypto-random";
 
 export function pickRandomItem<T>(array: T[]): T {

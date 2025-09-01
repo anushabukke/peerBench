@@ -1,0 +1,1 @@
+ALTER TABLE "feedback_flags" ADD COLUMN "opinion" varchar(8);

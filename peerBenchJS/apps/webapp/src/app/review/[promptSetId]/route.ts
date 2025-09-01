@@ -1,4 +1,4 @@
-import { getPromptIds } from "@/actions/getPromptIds";
+import { getPromptIds } from "@/lib/actions/get-prompt-ids";
 import { NextResponse } from "next/server";
 
 export const fetchCache = "force-no-store";

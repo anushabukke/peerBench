@@ -1,0 +1,17 @@
+{
+  "name": "peerbench-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Utility scripts for PeerBench",
+  "scripts": {
+    "test-connection": "node test-connection.js",
+    "populate-orgs": "node populate-orgs.js",
+    "create-leaderboard-view": "node create-leaderboard-view.js",
+    "run-sql": "node run-sql-file.js"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.29.0",
+    "postgres": "^3.4.3",
+    "dotenv": "^16.3.1"
+  }
+}

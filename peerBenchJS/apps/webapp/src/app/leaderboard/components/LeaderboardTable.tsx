@@ -2,7 +2,7 @@
 
 import { Leaderboard } from "@/services/leaderboard.service";
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown } from "lucide-react";
 import { LeaderboardTableRow } from "./LeaderboardTableRow";
 import {
@@ -80,7 +80,9 @@ export function LeaderboardTable({ data }: LeaderboardTableProps) {
                     {isLLMLeaderboard ? (
                       <>
                         <TableHead className="text-left font-semibold text-gray-700">
-                          Accuracy
+                          {data.promptType === "multiple-choice"
+                            ? "Accuracy"
+                            : "Avg. Score"}
                         </TableHead>
                         <TableHead className="text-right font-semibold text-gray-700">
                           Recent Evaluation

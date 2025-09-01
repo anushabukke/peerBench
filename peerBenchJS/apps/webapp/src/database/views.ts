@@ -10,4 +10,5 @@ export const leaderboardView = pgView("v_leaderboard", {
   uniquePrompts: integer("unique_prompts"),
   totalTestsPerformed: integer("total_tests_performed").notNull(),
   promptSetId: integer("prompt_set_id"),
+  promptType: text("prompt_type"),
 }).existing();

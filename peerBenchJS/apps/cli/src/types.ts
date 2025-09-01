@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-export const NodeEnvs = ["dev", "production"] as const;
+export const NodeEnvs = [
+  "dev",
+  "development",
+  "devel",
+  "prod",
+  "production",
+] as const;
 export type NodeEnv = (typeof NodeEnvs)[number];
 
 export const LogLevels = ["error", "warning", "info", "debug"] as const;

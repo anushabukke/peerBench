@@ -1,4 +1,5 @@
 import { EvaluationSourceType } from "@/types/evaluation-source";
+import { ReviewOpinion } from "@/types/review";
 import { FileTypeType } from "@/types/file-type";
 import { PromptOptions, PromptType } from "@peerbench/sdk";
 import {
@@ -13,6 +14,8 @@ import {
   varchar,
   bigint,
   jsonb,
+  primaryKey,
+  unique,
 } from "drizzle-orm/pg-core";
 import { authUsers } from "drizzle-orm/supabase";
 
@@ -85,25 +88,6 @@ export const userAnswersTable = pgTable("user_answers", {
     .notNull(),
   selectedOption: text("selected_option").notNull(),
   isCorrect: boolean("is_correct").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-export const promptFeedbacksTable = pgTable("prompt_feedbacks", {
-  id: integer().primaryKey().generatedByDefaultAsIdentity(),
-  userId: uuid("user_id")
-    .references(() => authUsers.id, {
-      onDelete: "cascade",
-      onUpdate: "cascade",
-    })
-    .notNull(),
-  promptId: uuid("prompt_id")
-    .references(() => promptsTable.id, {
-      onDelete: "cascade",
-      onUpdate: "cascade",
-    })
-    .notNull(),
-  feedback: text().notNull(),
-  flag: text().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -227,3 +211,226 @@ export const rssArticlesTable = pgTable("rss_articles", {
 });
 export type DbRSSArticle = typeof rssArticlesTable.$inferSelect;
 export type DbRSSArticleInsert = typeof rssArticlesTable.$inferInsert;
+
+export const reviewFlagsTable = pgTable("review_flags", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  flag: varchar({ length: 50 }).unique().notNull(),
+  opinion: varchar({ length: 8 }).$type<ReviewOpinion>(),
+});
+export type DbReviewFlag = typeof reviewFlagsTable.$inferSelect;
+export type DbReviewFlagInsert = typeof reviewFlagsTable.$inferInsert;
+
+export const testResultReviewsReviewFlagsTable = pgTable(
+  "test_result_reviews_review_flags",
+  {
+    testResultReviewId: integer("test_result_review_id")
+      .references(() => testResultReviewsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    flagId: integer("flag_id")
+      .references(() => reviewFlagsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.testResultReviewId, table.flagId] })]
+);
+export const promptReviewsReviewFlagsTable = pgTable(
+  "prompt_reviews_review_flags",
+  {
+    promptReviewId: integer("prompt_review_id")
+      .references(() => promptReviewsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    flagId: integer("flag_id")
+      .references(() => reviewFlagsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.promptReviewId, table.flagId] })]
+);
+
+export const promptReviewsTable = pgTable(
+  "prompt_reviews",
+  {
+    id: integer().primaryKey().generatedByDefaultAsIdentity(),
+    userId: uuid("user_id")
+      .references(() => authUsers.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    opinion: varchar({ length: 8 }).$type<ReviewOpinion>().notNull(),
+    comment: text().notNull(),
+    promptId: uuid("prompt_id")
+      .references(() => promptsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("id_user_id_prompt_id_unique")
+      .on(table.userId, table.promptId)
+      .nullsNotDistinct(),
+  ]
+);
+export type DbPromptReview = typeof promptReviewsTable.$inferSelect;
+export type DbPromptReviewInsert = typeof promptReviewsTable.$inferInsert;
+
+export const testResultReviewsTable = pgTable(
+  "test_result_reviews",
+  {
+    id: integer().primaryKey().generatedByDefaultAsIdentity(),
+    userId: uuid("user_id")
+      .references(() => authUsers.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    opinion: varchar({ length: 8 }).$type<ReviewOpinion>().notNull(),
+    comment: text().notNull(),
+    testResultId: integer("test_result_id")
+      .references(() => testResultsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    property: text(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    unique("id_user_id_test_result_id_property_unique")
+      .on(table.userId, table.testResultId, table.property)
+      .nullsNotDistinct(),
+  ]
+);
+export type DbTestResultReview = typeof testResultReviewsTable.$inferSelect;
+export type DbTestResultReviewInsert =
+  typeof testResultReviewsTable.$inferInsert;
+
+export const forestaiProvidersTable = pgTable("forestai_providers", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  name: text().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type DbForestAIProvider = typeof forestaiProvidersTable.$inferSelect;
+export type DbForestAIProviderInsert =
+  typeof forestaiProvidersTable.$inferInsert;
+
+// Organization tables
+export const orgsTable = pgTable("orgs", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  name: text().notNull(),
+  webPage: text("web_page"),
+  alphaTwoCode: text("alpha_two_code"),
+  country: text(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type DbOrg = typeof orgsTable.$inferSelect;
+export type DbOrgInsert = typeof orgsTable.$inferInsert;
+
+export const orgToPeopleTable = pgTable("org_to_people", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  orgId: integer("org_id")
+    .references(() => orgsTable.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    })
+    .notNull(),
+  userId: uuid("user_id")
+    .references(() => authUsers.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    })
+    .notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  unique("org_id_user_id_unique").on(table.orgId, table.userId)
+]);
+export type DbOrgToPeople = typeof orgToPeopleTable.$inferSelect;
+export type DbOrgToPeopleInsert = typeof orgToPeopleTable.$inferInsert;
+
+export const orgDomainsTable = pgTable("org_domains", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  orgId: integer("org_id")
+    .references(() => orgsTable.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    })
+    .notNull(),
+  domain: text().notNull().unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type DbOrgDomain = typeof orgDomainsTable.$inferSelect;
+export type DbOrgDomainInsert = typeof orgDomainsTable.$inferInsert;
+
+// Key management table
+export const keyToUserTable = pgTable("key_to_user", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  publicKey: text("public_key").notNull(),
+  keyType: varchar("key_type", { length: 50 }).notNull().default("secp256k1n"),
+  userUuid: uuid("user_uuid")
+    .references(() => authUsers.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    })
+    .notNull(),
+  keySigningUuid: uuid("key_signing_uuid").notNull(),
+  metadata: jsonb("metadata").$type<any>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  unique("public_key_unique").on(table.publicKey),
+  // Allow multiple keys per user per type, but ensure each public key is unique
+  unique("user_uuid_public_key_unique").on(table.userUuid, table.publicKey)
+]);
+export type DbKeyToUser = typeof keyToUserTable.$inferSelect;
+export type DbKeyToUserInsert = typeof keyToUserTable.$inferInsert;
+
+// User profile table
+export const userProfileTable = pgTable("user_profile", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  userId: uuid("user_id")
+    .references(() => authUsers.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    })
+    .notNull(),
+  
+  // User editable fields
+  displayName: text("display_name"),
+  github: text("github"),
+  website: text("website"),
+  bluesky: text("bluesky"),
+  mastodon: text("mastodon"),
+  twitter: text("twitter"),
+  
+  // System fields (not editable by user)
+  invitedBy: uuid("invited_by")
+    .references(() => authUsers.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+  
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  unique("user_id_unique").on(table.userId)
+]);
+
+export type DbUserProfile = typeof userProfileTable.$inferSelect;
+export type DbUserProfileInsert = typeof userProfileTable.$inferInsert;

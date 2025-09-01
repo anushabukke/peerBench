@@ -19,7 +19,7 @@ export abstract class AbstractGenerator {
    */
   async generate(
     input: unknown,
-    options?: Record<string, any>
+    options?: Parameters<this["generatePrompts"]>[1]
   ): Promise<Prompt[]> {
     // Validate input using the schema
     const validatedInput = this.inputSchema.parse(input);
@@ -31,8 +31,10 @@ export abstract class AbstractGenerator {
   /**
    * Abstract method that implementors MUST override.
    * This method receives already validated input data.
+   *
+   * NOTE: Callers must use `generate()` method
    */
-  protected abstract generatePrompts(
+  abstract generatePrompts(
     input: z.infer<(typeof this)["inputSchema"]>,
     options?: Record<string, any>
   ): Promise<Prompt[]>;
@@ -85,6 +87,12 @@ export abstract class AbstractGenerator {
      * Metadata
      */
     metadata?: Record<string, any>;
+
+    /**
+     * Expected Scorers that can be used to
+     * score the Responses for this Prompt
+     */
+    scorers?: string[];
   }): Promise<Prompt> {
     const questionCID = await calculateCID(params.question).then((cid) =>
       cid.toString()
@@ -123,6 +131,8 @@ export abstract class AbstractGenerator {
         generatorIdentifier: this.identifier,
         ...(params.metadata || {}),
       },
+
+      scorers: params.scorers ?? [],
     };
   }
 }

@@ -12,9 +12,9 @@ import {
   DbPromptInsert,
   DbPromptSet,
 } from "@/database/schema";
-import { readTaskFromContent, removeDIDPrefix } from "@peerbench/sdk";
+import { TaskReader, removeDIDPrefix } from "@peerbench/sdk";
 import { FileType } from "@/types/file-type";
-import { Transaction } from "@/types/db";
+import { DBTransaction, PaginatedResult } from "@/types/db";
 
 export class PromptSetService {
   static async addPromptsToPromptSet(
@@ -23,13 +23,14 @@ export class PromptSetService {
       fileName?: string;
       fileContent: string;
       uploaderId: string;
+      signature?: string | null;
     },
     options?: {
-      tx?: Transaction;
+      tx?: DBTransaction;
     }
   ): Promise<number> {
-    const transaction = async (tx: Transaction) => {
-      const { task } = await readTaskFromContent(
+    const transaction = async (tx: DBTransaction) => {
+      const { task } = await TaskReader.readFromContent(
         params.fileContent,
         params.fileName
       );
@@ -44,6 +45,9 @@ export class PromptSetService {
           sha256: task.sha256,
           type: FileType.Prompt,
           uploaderId: params.uploaderId,
+
+          signature: params.signature,
+          signedBy: params.signature ? params.uploaderId : null,
 
           // TODO: Get the file type from readTaskFromContent
           format: "json",
@@ -83,7 +87,7 @@ export class PromptSetService {
             metadata: prompt.metadata || {},
           }))
         )
-        .onConflictDoNothing() // Ignore if the prompt already exists
+        .onConflictDoNothing() // Ignore if a prompt is already exists that has the same primary key (id - which is UUID typed)
         .returning();
 
       // Return the number of prompts saved
@@ -108,7 +112,7 @@ export class PromptSetService {
        * If provided, the function will use the provided database
        * transaction instead of creating a new one.
        */
-      tx?: Transaction;
+      tx?: DBTransaction;
 
       /**
        * If true, the function will throw an error when the prompt set already exists.
@@ -148,7 +152,26 @@ export class PromptSetService {
     id?: number;
     title?: string;
   }): Promise<DbPromptSet | undefined> {
-    let query = db.select().from(promptSetsTable).$dynamic();
+    let query = db
+      .select({
+        ...getTableColumns(promptSetsTable),
+        questionCount: count(promptsTable.id),
+        totalAnswers: count(userAnswersTable.id),
+        firstPromptId: sql<string>`(
+          SELECT id FROM ${promptsTable}
+          WHERE ${promptsTable.promptSetId} = ${promptSetsTable.id}
+          ORDER BY ${promptsTable.createdAt} ASC
+          LIMIT 1
+        )`,
+      })
+      .from(promptSetsTable)
+      .leftJoin(promptsTable, eq(promptSetsTable.id, promptsTable.promptSetId))
+      .leftJoin(
+        userAnswersTable,
+        eq(promptsTable.id, userAnswersTable.promptId)
+      )
+      .groupBy(promptSetsTable.id)
+      .$dynamic();
 
     if (options.id) {
       query = query.where(eq(promptSetsTable.id, options.id));
@@ -166,26 +189,49 @@ export class PromptSetService {
   /**
    * Retrieves the list of available prompt sets.
    */
-  static async getPromptSetList(options: {
+  static async getPromptSetList(options?: {
     ownerId?: string;
     page?: number;
     pageSize?: number;
   }) {
+    const { ownerId, page = 1, pageSize = 10 } = options || {};
+
+    let countQuery = db
+      .select({
+        count: count(promptSetsTable),
+      })
+      .from(promptSetsTable)
+      .$dynamic();
     let query = this.promptSetListSelectQuery;
 
-    if (options.ownerId) {
-      query = query.where(eq(promptSetsTable.ownerId, options.ownerId));
+    if (ownerId) {
+      query = query.where(eq(promptSetsTable.ownerId, ownerId));
+      countQuery = countQuery.where(eq(promptSetsTable.ownerId, ownerId));
     }
 
-    if (options.pageSize) {
-      query = query.limit(options.pageSize);
+    if (pageSize) {
+      query = query.limit(pageSize);
     }
 
-    if (options.page && options.pageSize) {
-      query = query.offset((options.page - 1) * options.pageSize);
+    if (page) {
+      query = query.offset((page - 1) * pageSize);
     }
 
-    return await query;
+    const [[{ count: total }], results] = await Promise.all([
+      countQuery,
+      query,
+    ]);
+
+    return {
+      data: results,
+      pagination: {
+        totalRecords: total,
+        totalPages: Math.ceil(total / pageSize) || 1,
+        currentPage: page,
+        nextPage: page * pageSize < total ? page + 1 : null,
+        previousPage: page > 1 ? page - 1 : null,
+      },
+    } as PaginatedResult<(typeof results)[number]>;
   }
 
   /**
@@ -239,3 +285,11 @@ export class PromptSetService {
       .$dynamic();
   }
 }
+
+export type PromptSetListItem = Awaited<
+  ReturnType<(typeof PromptSetService)["getPromptSetList"]>
+>["data"][number];
+
+export type GetPromptSetListParams = Parameters<
+  (typeof PromptSetService)["getPromptSetList"]
+>[0];

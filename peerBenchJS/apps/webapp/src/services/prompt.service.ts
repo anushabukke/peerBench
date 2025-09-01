@@ -4,8 +4,8 @@ import {
   promptSetsTable,
   promptsTable,
   userAnswersTable,
-  promptFeedbacksTable,
   testResultsTable,
+  promptReviewsTable,
 } from "@/database/schema";
 import { db } from "../database/client";
 import { Prompt, PromptType } from "@peerbench/sdk";
@@ -21,8 +21,17 @@ import {
   isNotNull,
   or,
   ilike,
+  SQL,
+  ColumnsSelection,
 } from "drizzle-orm";
-import { FeedbackFlag } from "@/types/feedback";
+import { DBTransaction, PaginationOptions, Transaction } from "@/types/db";
+import { PgSelect } from "drizzle-orm/pg-core";
+import {
+  JoinNullability,
+  SelectMode,
+} from "drizzle-orm/query-builders/select.types";
+import { normalizeArray } from "@/utils/normalize-array";
+import { filesTable } from "@/database/schema";
 
 export interface PeerAggregation {
   modelId: string;
@@ -35,69 +44,331 @@ export interface PeerAggregation {
 
 export class PromptService {
   /**
+   * Retrieves the filters that can be used to search for prompts.
+   */
+  static async getPromptFilters(options?: { tx?: Transaction }) {
+    const tx = options?.tx ?? db;
+
+    const combinedTags = sql<string[]>`
+      jsonb_array_elements_text(
+        COALESCE(${promptsTable.metadata}->'tags', '[]'::jsonb) ||
+        COALESCE(${promptsTable.metadata}->'generatorTags', '[]'::jsonb) ||
+        COALESCE(${promptsTable.metadata}->'articleTags', '[]'::jsonb)
+      )
+    `.as("combined_tags");
+    const allTagsQuery = tx.$with("all_tags").as(
+      tx
+        .select({
+          combinedTags,
+        })
+        .from(promptsTable)
+        .groupBy(combinedTags)
+    );
+
+    const [result] = await tx
+      .with(allTagsQuery)
+      .select({
+        tags: sql<string[]>`
+          jsonb_agg(DISTINCT ${allTagsQuery.combinedTags})
+        `,
+        promptSets: sql<{ title: string; id: number }[]>`
+        COALESCE(
+          jsonb_agg(
+            DISTINCT jsonb_build_object(
+              'title', ${promptSetsTable.title},
+              'id', ${promptSetsTable.id}
+            )
+          ) FILTER (WHERE ${promptSetsTable.id} IS NOT NULL),
+          '[]'::jsonb
+        )
+      `,
+      })
+      .from(allTagsQuery)
+      .crossJoin(promptSetsTable);
+
+    return result;
+  }
+
+  /**
    * Retrieves a list of prompts that match with the given filters.
    */
   static async getPrompts(
-    options: {
-      promptSetId?: number;
-      search?: string;
-      type?: PromptType | PromptType[];
-      page?: number;
-      pageSize?: number;
-      orderBy?: "createdAt" | "question";
-      orderDirection?: "asc" | "desc";
+    options: PaginationOptions & {
+      tx?: DBTransaction;
+      orderBy?: {
+        createdAt?: "asc" | "desc";
+        question?: "asc" | "desc";
+      };
+      filters?: {
+        id?: string | string[];
+        promptSetId?: number | number[];
+        search?: string;
+        searchId?: string | string[];
+        tags?: string[];
+        type?: PromptType | PromptType[];
+        uploaderId?: string;
+        fileId?: number;
+        excludeReviewedByUserId?: string;
+        onlyReviewedByUserId?: string;
+        reviewedByUserId?: string;
+      };
     } = {}
   ) {
-    let query = db.select().from(promptsTable).$dynamic();
+    const tx = options.tx ?? db;
+
+    const testResultsQuery = tx.$with("test_results").as(
+      tx
+        .select({
+          promptId: testResultsTable.promptId,
+          modelName: testResultsTable.modelName,
+          testCount: count(testResultsTable.id).as("testCount"),
+          score: sql<number>`SUM(${testResultsTable.score})`
+            .mapWith(Number)
+            .as("score"),
+        })
+        .from(testResultsTable)
+        .orderBy(desc(sql`score`))
+        .groupBy(testResultsTable.promptId, testResultsTable.modelName)
+    );
+
+    const query = tx
+      .with(testResultsQuery)
+      .select({
+        id: promptsTable.id,
+        type: promptsTable.type,
+
+        question: promptsTable.question,
+        cid: promptsTable.cid,
+        sha256: promptsTable.sha256,
+
+        options: promptsTable.options,
+        answerKey: promptsTable.answerKey,
+        answer: promptsTable.answer,
+
+        fullPrompt: promptsTable.fullPrompt,
+        fullPromptCID: promptsTable.fullPromptCID,
+        fullPromptSHA256: promptsTable.fullPromptSHA256,
+
+        metadata: promptsTable.metadata,
+        createdAt: promptsTable.createdAt,
+
+        promptSet: {
+          id: promptsTable.promptSetId,
+          title: promptSetsTable.title,
+        },
+
+        testResults: sql<
+          { modelName: string; testCount: number; score: number }[]
+        >`
+        COALESCE(
+          jsonb_agg(
+            jsonb_build_object(
+              'modelName', ${testResultsQuery.modelName},
+              'testCount', ${testResultsQuery.testCount},
+              'score', ${testResultsQuery.score}
+            )
+          ) FILTER (WHERE ${isNotNull(testResultsQuery.modelName)}),
+          '[]'
+        )`,
+
+        // TODO: For backward compatibility
+        promptSetId: promptsTable.promptSetId,
+      })
+      .from(promptsTable)
+      .innerJoin(
+        promptSetsTable,
+        eq(promptsTable.promptSetId, promptSetsTable.id)
+      )
+      .innerJoin(filesTable, eq(promptsTable.fileId, filesTable.id))
+      .leftJoin(
+        testResultsQuery,
+        eq(promptsTable.id, testResultsQuery.promptId)
+      )
+      .groupBy(promptsTable.id, promptSetsTable.title)
+      .$dynamic();
+    const whereConditions = [];
 
     // Apply filters
-    if (options.promptSetId) {
-      query = query.where(eq(promptsTable.promptSetId, options.promptSetId));
+    if (options.filters?.promptSetId !== undefined) {
+      const ids = normalizeArray(options.filters.promptSetId);
+      if (ids.length > 0) {
+        whereConditions.push(inArray(promptsTable.promptSetId, ids));
+      }
     }
 
-    if (options.search) {
-      query = query.where(
+    // Filter by uploaderId (user who uploaded the file)
+    if (options.filters?.uploaderId) {
+      whereConditions.push(
+        eq(filesTable.uploaderId, options.filters.uploaderId)
+      );
+    }
+
+    // Filter by fileId
+    if (options.filters?.fileId) {
+      whereConditions.push(eq(promptsTable.fileId, options.filters.fileId));
+    }
+
+    // Filter for prompts that have been reviewed by the current user
+    if (options.filters?.onlyReviewedByUserId) {
+      whereConditions.push(sql`EXISTS (
+        SELECT 1 FROM ${promptReviewsTable} 
+        WHERE ${promptReviewsTable.promptId} = ${promptsTable.id} 
+        AND ${promptReviewsTable.userId} = ${options.filters.onlyReviewedByUserId}
+      )`);
+    }
+
+    // Filter for prompts that have been reviewed by a specific user
+    if (options.filters?.reviewedByUserId) {
+      whereConditions.push(sql`EXISTS (
+        SELECT 1 FROM ${promptReviewsTable} 
+        WHERE ${promptReviewsTable.promptId} = ${promptsTable.id} 
+        AND ${promptReviewsTable.userId} = ${options.filters.reviewedByUserId}
+      )`);
+    }
+
+    // Filter out prompts that have been reviewed by the current user (exclude reviewed)
+    if (options.filters?.excludeReviewedByUserId) {
+      whereConditions.push(sql`NOT EXISTS (
+        SELECT 1 FROM ${promptReviewsTable} 
+        WHERE ${promptReviewsTable.promptId} = ${promptsTable.id} 
+        AND ${promptReviewsTable.userId} = ${options.filters.excludeReviewedByUserId}
+      )`);
+    }
+
+    const searchConditions = [];
+    if (options.filters?.search) {
+      searchConditions.push(
         or(
-          ilike(promptsTable.question, `%${options.search}%`),
-          ilike(promptsTable.answer, `%${options.search}%`)
+          ilike(promptsTable.question, `%${options.filters.search}%`),
+          ilike(promptsTable.answer, `%${options.filters.search}%`)
         )
       );
     }
 
-    if (options.type) {
-      query = query.where(
+    const searchIdConditions = [];
+    if (options.filters?.searchId) {
+      searchIdConditions.push(
         inArray(
-          promptsTable.type,
-          Array.isArray(options.type) ? options.type : [options.type]
+          sql`${promptsTable.id}::text`,
+          normalizeArray(options.filters.searchId)
         )
       );
     }
 
-    // Apply sorting
-    if (options.orderBy) {
-      const orderColumn =
-        options.orderBy === "createdAt"
-          ? promptsTable.createdAt
-          : promptsTable.question;
+    // If both search filter are given, that means they have to be OR'ed
+    if (searchConditions.length > 0 && searchIdConditions.length > 0) {
+      whereConditions.push(or(...searchConditions, ...searchIdConditions));
+    } else if (searchConditions.length > 0) {
+      // Otherwise use them as they are
+      whereConditions.push(...searchConditions);
+    } else if (searchIdConditions.length > 0) {
+      whereConditions.push(...searchIdConditions);
+    }
 
-      query = query.orderBy(
-        options.orderDirection === "desc" ? desc(orderColumn) : asc(orderColumn)
+    // Filter by tags if provided
+    if (options.filters?.tags && options.filters.tags.length > 0) {
+      const tagConditions = options.filters.tags
+        .map((tag) => [
+          sql`${promptsTable.metadata}->'tags' @> ${JSON.stringify([tag])}`,
+          sql`${promptsTable.metadata}->'generatorTags' @> ${JSON.stringify([tag])}`,
+          sql`${promptsTable.metadata}->'articleTags' @> ${JSON.stringify([tag])}`,
+        ])
+        .flat();
+      whereConditions.push(or(...tagConditions));
+    }
+
+    if (options.filters?.type) {
+      whereConditions.push(
+        inArray(promptsTable.type, normalizeArray(options.filters.type))
       );
+    }
+
+    if (options.filters?.id) {
+      whereConditions.push(
+        inArray(promptsTable.id, normalizeArray(options.filters.id))
+      );
+    }
+    // Apply sorting
+    const orderColumns = [];
+    if (options.orderBy) {
+      const orderDirections = { asc: asc, desc: desc };
+
+      if (options.orderBy.createdAt) {
+        // Some of the prompts have the same createdAt,
+        // so we need to sort by id as well
+        orderColumns.push(
+          orderDirections[options.orderBy.createdAt](promptsTable.createdAt),
+          desc(promptsTable.id)
+        );
+      }
+
+      if (options.orderBy.question) {
+        orderColumns.push(
+          orderDirections[options.orderBy.question](promptsTable.question)
+        );
+      }
     } else {
-      // Default sorting by createdAt desc
-      query = query.orderBy(desc(promptsTable.createdAt));
+      orderColumns.push(desc(promptsTable.createdAt), desc(promptsTable.id));
     }
 
-    // Apply pagination
-    if (options.pageSize) {
-      query = query.limit(options.pageSize);
+    return await this.paginateQuery(
+      query.where(and(...whereConditions)).orderBy(...orderColumns),
+      tx
+        .select({ count: count() })
+        .from(promptsTable)
+        .innerJoin(
+          promptSetsTable,
+          eq(promptsTable.promptSetId, promptSetsTable.id)
+        )
+        .innerJoin(filesTable, eq(promptsTable.fileId, filesTable.id))
+        .where(and(...whereConditions))
+        .$dynamic(),
+      {
+        page: options.page,
+        pageSize: options.pageSize,
+      }
+    );
+  }
+
+  /**
+   * Generic method to paginate any query with count
+   */
+  private static async paginateQuery<
+    TTableName extends string,
+    TCountTableName extends string,
+    TSelect extends ColumnsSelection,
+    TSelectMode extends SelectMode,
+    TNullabilityMap extends Record<string, JoinNullability>,
+  >(
+    query: PgSelect<TTableName, TSelect, TSelectMode, TNullabilityMap>,
+    countQuery: PgSelect<
+      TCountTableName,
+      { count: SQL<number> },
+      "partial",
+      Record<TCountTableName, "not-null">
+    >,
+    options?: { page?: number; pageSize?: number }
+  ) {
+    const page = (options?.page || 1) - 1;
+    const limit = options?.pageSize || 0;
+    const offset = page * limit;
+
+    let paginatedQuery = query.$dynamic();
+
+    if (offset > 0) {
+      paginatedQuery = paginatedQuery.offset(offset) as typeof paginatedQuery;
     }
 
-    if (options.page && options.pageSize) {
-      query = query.offset((options.page - 1) * options.pageSize);
+    if (limit > 0) {
+      paginatedQuery = paginatedQuery.limit(limit) as typeof paginatedQuery;
     }
 
-    return await query;
+    const [{ count }] = await countQuery;
+
+    return {
+      data: await paginatedQuery,
+      totalCount: count,
+    };
   }
 }
 
@@ -249,178 +520,6 @@ export class PromptSetService {
   }
 
   /**
-   * Saves user feedback for a specific prompt.
-   * @param data The feedback data including promptId, userId, feedback text, and flag
-   * @returns The created feedback record
-   */
-  static async savePromptFeedback(data: {
-    promptId: string;
-    userId: string;
-    feedback: string;
-    flag: FeedbackFlag;
-  }) {
-    return await db.transaction(async (tx) => {
-      const [feedback] = await tx
-        .insert(promptFeedbacksTable)
-        .values({
-          promptId: data.promptId,
-          userId: data.userId,
-          feedback: data.feedback,
-          flag: data.flag,
-          createdAt: new Date(),
-        })
-        .returning();
-
-      return feedback;
-    });
-  }
-
-  /**
-   * Get analytics data for all prompt sets
-   */
-  static async getAnalytics(): Promise<PromptSetAnalytics> {
-    return await db.transaction(async (tx) => {
-      // Total prompt sets
-      const [{ count: totalPromptSets }] = await tx
-        .select({ count: count() })
-        .from(promptSetsTable);
-
-      // Total prompts
-      const [{ count: totalPrompts }] = await tx
-        .select({ count: count() })
-        .from(promptsTable);
-
-      // Total answers
-      const [{ count: totalAnswers }] = await tx
-        .select({ count: count() })
-        .from(userAnswersTable);
-
-      // Average accuracy
-      const [{ avg: averageAccuracy }] = await tx
-        .select({
-          avg: sql<number>`AVG(CASE WHEN ${userAnswersTable.isCorrect} THEN 1 ELSE 0 END)`,
-        })
-        .from(userAnswersTable);
-
-      // Prompt sets by date
-      const promptSetsByDate = await tx
-        .select({
-          date: sql<string>`DATE(${promptSetsTable.createdAt})`,
-          count: count(),
-        })
-        .from(promptSetsTable)
-        .groupBy(sql`DATE(${promptSetsTable.createdAt})`)
-        .orderBy(asc(sql`DATE(${promptSetsTable.createdAt})`));
-
-      // Top prompt sets
-      const topPromptSets = await tx
-        .select({
-          id: promptSetsTable.id,
-          title: promptSetsTable.title,
-          promptCount: count(promptsTable.id),
-          answerCount: count(userAnswersTable.id),
-          accuracy: sql<number>`AVG(CASE WHEN ${userAnswersTable.isCorrect} THEN 1 ELSE 0 END)`,
-        })
-        .from(promptSetsTable)
-        .leftJoin(
-          promptsTable,
-          eq(promptSetsTable.id, promptsTable.promptSetId)
-        )
-        .leftJoin(
-          userAnswersTable,
-          eq(promptsTable.id, userAnswersTable.promptId)
-        )
-        .groupBy(promptSetsTable.id, promptSetsTable.title)
-        .orderBy(desc(sql`count(${userAnswersTable.id})`))
-        .limit(5);
-
-      // Answer distribution by prompt set
-      const answerDistribution = await tx
-        .select({
-          promptSetId: promptSetsTable.id,
-          title: promptSetsTable.title,
-          promptCount: count(promptsTable.id),
-          totalAnswers: count(userAnswersTable.id),
-          correctAnswers: sql<number>`SUM(CASE WHEN ${userAnswersTable.isCorrect} THEN 1 ELSE 0 END)`,
-        })
-        .from(promptSetsTable)
-        .leftJoin(
-          promptsTable,
-          eq(promptSetsTable.id, promptsTable.promptSetId)
-        )
-        .leftJoin(
-          userAnswersTable,
-          eq(promptsTable.id, userAnswersTable.promptId)
-        )
-        .groupBy(promptSetsTable.id, promptSetsTable.title)
-        .orderBy(desc(sql`count(${userAnswersTable.id})`))
-        .limit(10)
-        .then((res) =>
-          res.map((r) => ({
-            ...r,
-            accuracy:
-              r.totalAnswers > 0 ? r.correctAnswers / r.totalAnswers : 0,
-          }))
-        );
-
-      // Feedback statistics
-      const feedbackStats = await tx
-        .select({
-          flag: promptFeedbacksTable.flag,
-          count: count(),
-        })
-        .from(promptFeedbacksTable)
-        .groupBy(promptFeedbacksTable.flag)
-        .then((res) =>
-          res.map((r) => ({
-            ...r,
-            flag: r.flag as FeedbackFlag,
-          }))
-        );
-
-      return {
-        totalPromptSets,
-        totalPrompts,
-        totalAnswers,
-        averageAccuracy: averageAccuracy || 0,
-        promptSetsByDate,
-        topPromptSets,
-        answerDistribution,
-        feedbackStats,
-      };
-    });
-  }
-
-  static async getPromptSetFeedback(
-    promptSetIds: number[]
-  ): Promise<PromptSetFeedback[]> {
-    return await db
-      .select({
-        question: promptsTable.question,
-        promptSetTitle: promptSetsTable.title,
-        feedback: promptFeedbacksTable.feedback,
-        flag: promptFeedbacksTable.flag,
-        createdAt: promptFeedbacksTable.createdAt,
-      })
-      .from(promptsTable)
-      .innerJoin(
-        promptFeedbacksTable,
-        eq(promptsTable.id, promptFeedbacksTable.promptId)
-      )
-      .innerJoin(
-        promptSetsTable,
-        eq(promptsTable.promptSetId, promptSetsTable.id)
-      )
-      .where(inArray(promptsTable.promptSetId, promptSetIds))
-      .orderBy(desc(promptFeedbacksTable.createdAt))
-      .groupBy(
-        promptFeedbacksTable.id,
-        promptsTable.question,
-        promptSetsTable.title
-      );
-  }
-
-  /**
    * Gets peer aggregations for a specific prompt set to compare with new benchmark results.
    * @param promptSetId The ID of the prompt set to get scores for
    * @returns Array of scores grouped by model
@@ -511,32 +610,6 @@ export type PromptSet = DbPromptSet & {
   questionCount: number;
 };
 
-export interface PromptSetAnalytics {
-  totalPromptSets: number;
-  totalPrompts: number;
-  totalAnswers: number;
-  averageAccuracy: number;
-  promptSetsByDate: {
-    date: string;
-    count: number;
-  }[];
-  topPromptSets: {
-    id: number;
-    title: string;
-    promptCount: number;
-    answerCount: number;
-    accuracy: number;
-  }[];
-  answerDistribution: {
-    promptSetId: number;
-    title: string;
-    totalAnswers: number;
-    correctAnswers: number;
-    accuracy: number;
-    promptCount: number;
-  }[];
-  feedbackStats: {
-    flag: FeedbackFlag;
-    count: number;
-  }[];
-}
+export type GetPromptsData = Awaited<
+  ReturnType<typeof PromptService.getPrompts>
+>["data"][number];

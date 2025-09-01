@@ -1,9 +1,45 @@
 import { EvaluationsTable } from "./components/EvaluationsTable";
 import { EvaluationService } from "@/services/evaluation.service";
 import Filters from "./components/Filters";
-import { PageContextProvider } from "./context";
+import { PageContextProvider, FilterOptionType } from "./context";
 import { LeaderboardService } from "@/services/leaderboard.service";
 import { DateTime } from "luxon";
+import { capitalize } from "@/utils/capitalize";
+
+const formatStrategy = (strategy: string) => {
+  return strategy
+    .split("-")
+    .map((word) => capitalize(word))
+    .join(" ");
+};
+
+// Helper function to map filter strategies
+const mapFilterStrategies = (strategies: string[]): FilterOptionType[] => {
+  return strategies.length > 1
+    ? strategies.map((strategy) => ({
+        value: strategy,
+        label: formatStrategy(strategy),
+      }))
+    : [];
+};
+
+// Helper functions for parsing search params
+const parseStringParam = (value: string | undefined): string | undefined => {
+  return value !== undefined ? decodeURIComponent(value) : undefined;
+};
+
+const parseNumberParam = (
+  value: string | undefined,
+  defaultValue: number
+): number => {
+  return value !== undefined ? Number(value) : defaultValue;
+};
+
+const parseOptionalNumberParam = (
+  value: string | undefined
+): number | undefined => {
+  return value !== undefined ? Number(value) : undefined;
+};
 
 export default async function Page(props: {
   params: Promise<{ modelName: string }>;
@@ -13,26 +49,21 @@ export default async function Page(props: {
     protocol?: string;
     promptSet?: string;
     provider?: string;
+    promptType?: string;
   }>;
 }) {
   const { modelName } = await props.params;
   const model = decodeURIComponent(modelName);
 
   const awaitedSearchParams = await props.searchParams;
-  const page = Number(awaitedSearchParams.page) || 1;
-  const pageSize = Number(awaitedSearchParams.pageSize) || 10;
-  const protocolName =
-    awaitedSearchParams.protocol !== undefined
-      ? decodeURIComponent(awaitedSearchParams.protocol)
-      : undefined;
-  const promptSetId =
-    awaitedSearchParams.promptSet !== undefined
-      ? Number(awaitedSearchParams.promptSet)
-      : undefined;
-  const provider =
-    awaitedSearchParams.provider !== undefined
-      ? decodeURIComponent(awaitedSearchParams.provider)
-      : undefined;
+
+  // Parse search params using helper functions
+  const page = parseNumberParam(awaitedSearchParams.page, 1);
+  const pageSize = parseNumberParam(awaitedSearchParams.pageSize, 10);
+  const protocolName = parseStringParam(awaitedSearchParams.protocol);
+  const promptSetId = parseOptionalNumberParam(awaitedSearchParams.promptSet);
+  const provider = parseStringParam(awaitedSearchParams.provider);
+  const promptType = parseStringParam(awaitedSearchParams.promptType);
 
   const [evaluations, filters, leaderboardItem] = await Promise.all([
     EvaluationService.getEvaluationsList({
@@ -42,6 +73,7 @@ export default async function Page(props: {
       promptSetId,
       protocolName,
       provider,
+      promptType,
     }),
     EvaluationService.getEvaluationsListFilterValues({
       model,
@@ -224,16 +256,16 @@ export default async function Page(props: {
     );
   };
 
-  console.log(providers);
-
   return (
     <PageContextProvider
       contexts={contexts}
       providers={providers}
+      promptTypes={mapFilterStrategies(filters.promptTypes)}
       initialContextFilter={initialContext?.value}
       initialProviderFilter={initialProviderFilter?.value}
+      initialPromptTypeFilter={promptType}
     >
-      <div className="container mx-auto py-8">
+      <div className="container mx-auto py-8 space-y-4">
         <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-gray-100">
           {model}
         </h1>
@@ -243,6 +275,7 @@ export default async function Page(props: {
           evaluations={evaluations.results}
           currentPage={page}
           currentPageSize={pageSize}
+          modelName={model}
           total={evaluations.total}
         />
       </div>

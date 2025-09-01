@@ -1,6 +1,6 @@
 import { createLogger, format, transports } from "winston";
-import { config } from "../config";
 import * as ansis from "ansis";
+import { env } from "@/environment";
 
 type ColorName = "red" | "yellow" | "green" | "magenta" | "cyan";
 type LogLevel = "error" | "warning" | "info" | "debug";
@@ -13,7 +13,7 @@ const colors = {
 };
 
 export const logger = createLogger({
-  level: config.LOG_LEVEL,
+  level: env().logLevel,
   levels: {
     error: 0,
     warning: 1,
@@ -36,7 +36,7 @@ export const logger = createLogger({
             `${info.timestamp}`,
             levelColor.bold(info.level.toUpperCase()),
             levelColor.bold(`[${context || "Main"}]`).padEnd(25),
-            config.NODE_ENV == "dev" && info.stack
+            !["production", "prod"].includes(env().nodeEnv) && info.stack
               ? levelColor(
                   `${info.message}${(info.stack as string[]).join("\n")}`
                 )

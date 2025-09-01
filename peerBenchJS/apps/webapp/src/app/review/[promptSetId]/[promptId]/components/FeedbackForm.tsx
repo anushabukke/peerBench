@@ -1,5 +1,7 @@
+"use client";
+
 import { useState } from "react";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import Select from "react-select";
@@ -7,8 +9,8 @@ import { toast } from "react-toastify";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
-import { FeedbackFlag } from "@/types/feedback";
-import { saveFeedback } from "@/actions/saveFeedback";
+import { FeedbackFlag } from "@/types/review";
+import { saveReview } from "@/lib/actions/save-review";
 
 interface FeedbackFormProps {
   promptId: string;
@@ -46,11 +48,7 @@ const selectOptions: SelectOption[] = [
   { value: "other", label: "Other Issue" },
 ];
 
-export function FeedbackForm({
-  promptId,
-  userId,
-  onSubmit,
-}: FeedbackFormProps) {
+export function FeedbackForm({ promptId, onSubmit }: FeedbackFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -71,10 +69,11 @@ export function FeedbackForm({
   const onSubmitForm = async (data: FeedbackFormData) => {
     try {
       setIsSubmitting(true);
-      await saveFeedback({
+      await saveReview({
         promptId,
-        userId,
-        ...data,
+        comment: data.feedback,
+        flags: [{ value: data.flag, opinion: "negative" }],
+        opinion: "negative",
       });
 
       toast.success("Thank you for your feedback!");

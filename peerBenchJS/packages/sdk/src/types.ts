@@ -63,7 +63,7 @@ export const PromptSchema = z.object({
   /**
    * Type of the Prompt
    */
-  type: z.nativeEnum(PromptTypes),
+  type: z.nativeEnum(PromptTypes).default("multiple-choice"), // TODO: For the time being, use multiple choice type by default in order to not to break anything in the codebase
 
   /**
    * Expected option value for the question
@@ -79,6 +79,12 @@ export const PromptSchema = z.object({
    * Additional metadata related to the Prompt
    */
   metadata: z.record(z.string(), z.any()).optional(),
+
+  /**
+   * Expected Scorer identifiers that can be used to
+   * score the Responses for this Prompt
+   */
+  scorers: z.array(z.string()).optional(),
 });
 
 /**

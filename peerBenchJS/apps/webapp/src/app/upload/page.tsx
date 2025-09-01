@@ -1,20 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { motion } from "framer-motion";
-import { readTaskFromContent, SchemaName, Task } from "@peerbench/sdk";
-import LoadingSpinner from "@/components/LoadingSpinner";
+import { motion } from "motion/react";
+import { TaskReader, Task, PBTaskSchema } from "@peerbench/sdk";
+import LoadingSpinner from "@/components/loading-spinner";
 import { z } from "zod";
 import {
   addPromptsToPromptSet,
   createPromptSet,
-} from "@/app/actions/prompt-set";
-import PromptFilePreview from "@/components/PromptFilePreview";
+} from "@/lib/actions/prompt-set";
+import PromptFilePreview from "@/components/prompt-file-preview";
 import { InfoIcon } from "@/components/ui/icons";
 import ValidSchemas from "./components/ValidSchemas";
 import PromptSetSelector, {
   PromptSetOption,
-} from "@/components/PromptSetSelector";
+} from "@/components/prompt-set-selector";
 import { Button } from "@/components/ui/button";
 import { FileInput } from "@/components/ui/file-input";
 
@@ -57,18 +57,21 @@ export default function UploadPage() {
       setIsNonPeerbenchSchema(false);
 
       try {
-        const content = await selectedFile.arrayBuffer();
-        const { task: taskResult, schema } = await readTaskFromContent(
+        // Read file content as text
+        const content = await selectedFile.text();
+        const { task: taskResult, schema } = await TaskReader.readFromContent(
           content,
           selectedFile.name
         );
 
         setTask(taskResult);
-        setDetectedSchema(schema.name);
+        setDetectedSchema(schema.identifier);
 
         // Check if the file is not in peerbench schema
 
-        if (schema.name !== SchemaName.pb) {
+        // TODO: We should be able to access identifier without instantiating an object
+        const pbSchema = new PBTaskSchema();
+        if (schema.identifier !== pbSchema.identifier) {
           setConvertedFile(JSON.stringify(taskResult.prompts));
           setIsNonPeerbenchSchema(true);
         }

@@ -4,5 +4,12 @@
  * get rid out of some additional formatting (e.g. ```json).
  */
 export function parseResponseAsJSON<T>(response: string) {
-  return JSON.parse(response.replace(/```json/g, "").replace(/```/g, "")) as T;
+  let out  ;
+  try {
+    out = JSON.parse(response.replace(/```json/g, "").replace(/```/g, "")) as T ;
+  } catch (e) {
+    console.log("Original response", response);
+    console.error("Error parsing response as JSON", e);
+  }
+  return out;
 }

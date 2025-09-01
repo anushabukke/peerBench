@@ -1,0 +1,2 @@
+ALTER TABLE "prompt_reviews" ADD CONSTRAINT "id_user_id_prompt_id_unique" UNIQUE("user_id","prompt_id","id");--> statement-breakpoint
+ALTER TABLE "test_result_reviews" ADD CONSTRAINT "id_user_id_test_result_id_unique" UNIQUE("user_id","test_result_id","id");

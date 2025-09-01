@@ -10,7 +10,7 @@ export abstract class AbstractRSSCollector<
 
   constructor() {
     super();
-    this.parser = new XMLParser();
+    this.parser = new XMLParser({});
   }
 
   /**

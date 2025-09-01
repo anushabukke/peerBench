@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import { useState, useCallback, useEffect, useRef } from "react";
 import {
   OpenRouterProvider,
@@ -10,34 +10,36 @@ import {
   score,
   ModelInfo,
   NearAIProvider,
-  readTaskFromContent,
   aggregate,
   PromptScore,
   AggregatedResult,
-  readableTime,
-  SchemaName,
   bufferToString,
   LargeLanguageModelOwner,
   LargeLanguageModel,
   LargeLanguageModelType,
   LargeLanguageModelOwnerType,
+  TaskReader,
+  PBTaskSchema,
+  MultipleChoiceScorer,
+  formatMs,
 } from "@peerbench/sdk";
 import { twMerge } from "tailwind-merge";
 import { toast } from "react-toastify";
 import Select from "react-select";
 import Image from "next/image";
-import PromptFilePreview from "@/components/PromptFilePreview";
+import PromptFilePreview from "@/components/prompt-file-preview";
 import { Button } from "@/components/ui/button";
-import { User } from "@supabase/supabase-js";
+import { type User } from "@supabase/supabase-js";
 import { getPromptSets, getPeerAggregations } from "./actions";
 import { PeerAggregation, PromptSet } from "@/services/prompt.service";
 import { FileInput } from "@/components/ui/file-input";
 import PromptSetSelect from "./components/PromptSetSelect";
 import dynamic from "next/dynamic";
 import { AreaChart } from "./components/AreaChart";
-import { savePeerBenchResults } from "../actions/save-results";
+import { savePeerBenchResults } from "@/lib/actions/save-results";
 import { BenchmarkScore, EvaluationFile } from "@/services/evaluation.service";
 import { EvaluationSource } from "@/types/evaluation-source";
+import { usePreloader } from "@/hooks/usePreloader";
 
 const CreatableSelect = dynamic(() => import("react-select/creatable"), {
   ssr: false,
@@ -81,6 +83,7 @@ type PromptSetOption = {
 
 export default function BenchmarkPage(props: { user: User }) {
   const { user } = props;
+  const { getCachedData, isDataAvailable, isPreloading } = usePreloader();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -92,6 +95,7 @@ export default function BenchmarkPage(props: { user: User }) {
   const [selectedModels, setSelectedModels] = useState<ModelInfo[]>([]);
   const [isStandardFormat, setIsStandardFormat] = useState(true);
   const [promptSets, setPromptSets] = useState<PromptSet[]>([]);
+  const [, setPromptSetsLoaded] = useState(false);
   const [selectedPromptSetId, setSelectedPromptSetId] = useState<number | null>(
     null
   );
@@ -103,7 +107,7 @@ export default function BenchmarkPage(props: { user: User }) {
   const [newPromptSetDescription, setNewPromptSetDescription] = useState("");
   const logContainerRef = useRef<HTMLDivElement | null>(null);
   const task = useRef<Task | null>(null);
-  const taskFileContent = useRef<ArrayBuffer | null>(null);
+  const taskFileContent = useRef<Uint8Array | null>(null);
   const scores = useRef<PromptScore[]>([]);
   const abortControllerRef = useRef<AbortController | null>(null);
   const [showComparison, setShowComparison] = useState(false);
@@ -113,22 +117,36 @@ export default function BenchmarkPage(props: { user: User }) {
   );
   const [isPromptSetLocked, setIsPromptSetLocked] = useState(false);
 
-  // Load prompt sets when component mounts
+  // Load prompt sets with preloader optimization
   useEffect(() => {
     const loadPromptSets = async () => {
-      try {
-        const result = await getPromptSets();
-        if (result.success && result.data) {
-          setPromptSets(result.data);
-        } else {
-          console.error("Failed to load prompt sets:", result.error);
+      // Try to get cached data first
+      const cachedPromptSets = getCachedData("promptSets");
+      if (cachedPromptSets) {
+        setPromptSets(cachedPromptSets);
+        setPromptSetsLoaded(true);
+        return;
+      }
+
+      // If no cached data, fetch fresh data
+      if (!isDataAvailable("promptSets") && !isPreloading) {
+        try {
+          const result = await getPromptSets();
+          if (result.success && result.data) {
+            setPromptSets(result.data);
+            setPromptSetsLoaded(true);
+          } else {
+            console.error("Failed to load prompt sets:", result.error);
+            setPromptSetsLoaded(true); // Mark as loaded even on error
+          }
+        } catch (error) {
+          console.error("Failed to load prompt sets:", error);
+          setPromptSetsLoaded(true); // Mark as loaded even on error
         }
-      } catch (error) {
-        console.error("Failed to load prompt sets:", error);
       }
     };
     loadPromptSets();
-  }, []);
+  }, [getCachedData, isDataAvailable, isPreloading]);
 
   const handlePromptSetSelect = async (
     newTask: Task,
@@ -229,7 +247,7 @@ export default function BenchmarkPage(props: { user: User }) {
 
     if (nearAiToken) {
       const provider = new NearAIProvider({ apiKey: nearAiToken });
-      const providerName = provider.name.toLowerCase();
+      const providerName = provider.identifier.toLowerCase();
 
       updateProviderState(providerName, { loading: true });
       provider
@@ -334,13 +352,15 @@ export default function BenchmarkPage(props: { user: User }) {
       setIsStandardFormat(true);
 
       try {
-        taskFileContent.current = await selectedFile.arrayBuffer();
-        const { task: taskResult, schema } = await readTaskFromContent(
+        taskFileContent.current = await selectedFile.bytes();
+        const { task: taskResult, schema } = await TaskReader.readFromContent(
           taskFileContent.current,
           selectedFile.name
         );
 
-        if (schema.name !== SchemaName.pb) {
+        // TODO: We should be able to access identifier without instantiating an object
+        const pbSchema = new PBTaskSchema();
+        if (schema.identifier !== pbSchema.identifier) {
           setError(
             "Your task file doesn't follow standard PeerBench format. Please use the 'Convert to PB Format' button to convert it. Then use the converted file for benchmarking."
           );
@@ -511,7 +531,11 @@ export default function BenchmarkPage(props: { user: User }) {
           );
         },
         onPromptResponse: async (response, details) => {
-          const [processedScore] = await score([response]);
+          // TODO: Support different scorers
+          const [processedScore] = await score(
+            [response],
+            new MultipleChoiceScorer()
+          );
           scores.current.push(processedScore);
 
           await aggregateScores();
@@ -1272,9 +1296,9 @@ export default function BenchmarkPage(props: { user: User }) {
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"
-                        title={`Total latency: ${readableTime(result.totalLatency)}`}
+                        title={`Total latency: ${formatMs(result.totalLatency)}`}
                       >
-                        {readableTime(result.avgLatency)}
+                        {formatMs(result.avgLatency)}
                       </td>
                       <td
                         className="px-6 py-4 whitespace-nowrap text-sm text-gray-500"

@@ -8,24 +8,38 @@ import { MaybePromise, Prompt, PromptResponse, PromptScore } from "@/types";
  */
 export abstract class AbstractRegistry {
   /**
-   * Uploads the given prompts to the Registry
+   * The unique identifier of the Registry.
+   */
+  abstract readonly identifier: string;
+
+  /**
+   * Uploads the given prompts to the Registry.
+   *
    * @returns the number of prompts uploaded
    */
-  abstract uploadPrompts(prompts: Prompt[]): MaybePromise<number>;
+  abstract uploadPrompts(
+    prompts: Prompt[],
+    options?: Record<string, any>
+  ): MaybePromise<number>;
 
   /**
-   * Uploads the given responses to the Registry
+   * Uploads the given responses to the Registry.
+   *
    * @returns the number of responses uploaded
    */
-  abstract uploadResponses(responses: PromptResponse[]): MaybePromise<number>;
+  abstract uploadResponses(
+    responses: PromptResponse[],
+    options?: Record<string, any>
+  ): MaybePromise<number>;
 
   /**
-   * Uploads the given scores to the Registry
+   * Uploads the given scores to the Registry.
+   *
    * @returns the number of scores uploaded
    */
   abstract uploadScores(
     scores: PromptScore[],
-    options?: {
+    options?: Record<string, any> & {
       /**
        * Whether to include the response and prompt data in the scores
        */

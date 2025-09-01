@@ -1,5 +1,3 @@
-"use client";
-
 import { HTMLAttributes, forwardRef } from "react";
 import { twMerge } from "tailwind-merge";
 

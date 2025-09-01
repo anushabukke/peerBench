@@ -1,20 +1,23 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
-  serverExternalPackages: ["sharp", "onnxruntime-node", "natural"],
+  output: "standalone",
+  serverExternalPackages: ["hyparquet", "@supabase/supabase-js"],
+  outputFileTracingRoot: path.join(__dirname, "../.."),
   experimental: {
     serverActions: {
       bodySizeLimit: "1000mb",
     },
   },
+  reactStrictMode: false,
 
   webpack: (config, { isServer }) => {
     if (!isServer) {
       // Client-side configuration
       config.resolve.fallback = {
         ...config.resolve.fallback,
-        crypto: require.resolve("crypto-browserify"),
         fs: false,
         path: false,
       };

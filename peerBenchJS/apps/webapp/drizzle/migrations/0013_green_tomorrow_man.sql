@@ -1,0 +1,2 @@
+ALTER TABLE "prompt_reviews" ADD COLUMN "updated_at" timestamp DEFAULT now() NOT NULL;--> statement-breakpoint
+ALTER TABLE "test_result_reviews" ADD COLUMN "updated_at" timestamp DEFAULT now() NOT NULL;

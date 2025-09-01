@@ -12,7 +12,7 @@ export default function DashboardPage() {
           Welcome to Your Dashboard
         </h1>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle>Review Questions</CardTitle>
             </CardHeader>
@@ -27,7 +27,7 @@ export default function DashboardPage() {
                 </Button>
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           <Card>
             <CardHeader>
@@ -41,6 +41,23 @@ export default function DashboardPage() {
               <div className="w-full justify-center flex">
                 <Button asChild variant="default" size="default">
                   <Link href="/benchmark">Run Benchmark</Link>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Explore Prompts</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <p>
+                Discover high-quality prompts from the community. Search,
+                filter, and find the perfect prompts for your needs.
+              </p>
+              <div className="w-full justify-center flex">
+                <Button asChild variant="default" size="default">
+                  <Link href="/explore/prompts">Explore Prompts</Link>
                 </Button>
               </div>
             </CardContent>

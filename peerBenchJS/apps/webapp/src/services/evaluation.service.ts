@@ -5,6 +5,7 @@ import {
   filesTable,
   promptsTable,
   promptSetsTable,
+  forestaiProvidersTable,
 } from "@/database/schema";
 import { db } from "@/database/client";
 import {
@@ -16,11 +17,8 @@ import {
   count,
   getTableColumns,
   sql,
-  isNotNull,
   isNull,
   or,
-  not,
-  gt,
 } from "drizzle-orm";
 import {
   calculateCID,
@@ -30,22 +28,24 @@ import {
   OpenRouterProvider,
   PromptScoreSchema,
   removeDIDPrefix,
+  PromptType,
 } from "@peerbench/sdk";
-import { EvaluationSchema } from "@/validation/evaluation";
+import { ForestAIAuditFileSchema } from "@/validation/forest-ai-audit-file";
 import { z } from "zod";
 import { v7 as uuidv7 } from "uuid";
 import { EvaluationSource } from "@/types/evaluation-source";
 import { FileType } from "@/types/file-type";
-import { TestResult } from "@/validation/test-result";
 import { PromptSetService } from "./promptset.service";
+import { Transaction } from "@/types/db";
+import axios from "axios";
 
 const GENERIC_LLM_PROTOCOL_ADDRESS =
-  "0x263dE5ea24867C3aCFdd6D578d8f11b70Ca81756".toLowerCase();
+  "0x2cf3a88a17fa5c5601de77b44f19a02e572c03af".toLowerCase();
 const MEDQA_PROTOCOL_ADDRESS =
-  "0xFf24e1259450D84727FB401C8fc036ce80Ac4721".toLowerCase();
+  "0x7011a90bdb621ffd75cbf97c59423636ebc0092f".toLowerCase();
 
 // Provider to parse model info from model id
-// Currently those protocols only support openrouter.ai
+// Currently the protocols from ForestAI only support openrouter.ai.
 // Add more provider to parse model id if needed
 const providers = [
   new OpenRouterProvider({ apiKey: "" }),
@@ -56,6 +56,105 @@ const providers = [
  * Service for managing validation results.
  */
 export class EvaluationService {
+  private static async refreshProviderName(
+    providerId: number,
+    options?: {
+      tx?: Transaction;
+    }
+  ) {
+    const fetchName = async (): Promise<string | undefined> => {
+      try {
+        const response = await axios.get(
+          `https://indexer.forestai.io/api/actors/${providerId}`
+        );
+        const name = (response.data?.data || response.data).name;
+        return name;
+      } catch (err) {
+        console.error(
+          `Failed to fetch provider name for provider id: ${providerId}`,
+          err
+        );
+      }
+    };
+
+    const updateRecords = async (providerName: string, tx: Transaction) => {
+      // Update the provider information for each test result that has been
+      // associated with this provider ID
+      await tx
+        .update(testResultsTable)
+        .set({
+          provider: providerName,
+          updatedAt: new Date(),
+        })
+        .from(evaluationsTable)
+        .where(
+          and(
+            // Join the table based on `evaluationId` column
+            eq(testResultsTable.evaluationId, evaluationsTable.id),
+
+            // Only update the test results that exists in an evaluation that
+            // matches with this providerId
+            eq(evaluationsTable.providerId, providerId),
+
+            // Ensure that we are not doing anything related with peerBench
+            eq(evaluationsTable.source, "forestai")
+          )
+        );
+
+      // Update the provider name as well to keep the data aligned
+      await tx
+        .update(forestaiProvidersTable)
+        .set({
+          name: providerName,
+          updatedAt: new Date(),
+        })
+        .where(eq(forestaiProvidersTable.id, providerId));
+    };
+
+    const transaction = async (tx: Transaction) => {
+      const [providerNameRecord] = await tx
+        .select()
+        .from(forestaiProvidersTable)
+        .where(eq(forestaiProvidersTable.id, providerId));
+
+      let providerName = providerNameRecord?.name;
+
+      if (providerNameRecord === undefined) {
+        // Fetch the name and save it to the database. Also fallback to a default value.
+        providerName = (await fetchName()) || `ID: ${providerId}`;
+        await tx.insert(forestaiProvidersTable).values({
+          id: providerId,
+          name: providerName,
+        });
+        await updateRecords(providerName, tx);
+      } else if (
+        providerNameRecord.updatedAt <
+        new Date(Date.now() - 1000 * 60 * 60 * 24)
+      ) {
+        // Refetch the Provider name if it is older than 24 hours
+        const refetchedProviderName = await fetchName();
+
+        // If the Provider name was updated on ForestAI side, we also need to
+        // update peerBench db to keep the data aligned.
+        if (
+          refetchedProviderName !== undefined &&
+          refetchedProviderName !== providerNameRecord.name
+        ) {
+          providerName = refetchedProviderName;
+          await updateRecords(providerName, tx);
+        }
+      }
+
+      return providerName;
+    };
+
+    // If the transaction is given, then use it. Otherwise just use the regular db client
+    if (!options?.tx) {
+      return await db.transaction(async (tx) => transaction(tx));
+    }
+    return transaction(options.tx);
+  }
+
   /**
    * Saves ForestAI validation results to the database.
    */
@@ -71,7 +170,7 @@ export class EvaluationService {
         const fileCID = await calculateCID(file.content);
         const fileSHA256 = await calculateSHA256(file.content);
         const validation = z
-          .array(EvaluationSchema)
+          .array(ForestAIAuditFileSchema)
           .safeParse(JSON.parse(file.content));
 
         if (!validation.success) {
@@ -145,6 +244,13 @@ export class EvaluationService {
             })
             .returning();
 
+          // Use the providerName if it is provided to keep backward compatibility
+          // with the data that ForestAI daemons still have. Otherwise just fetch
+          // the provider name from ForestAI indexer or use from what saved in the db.
+          const providerName =
+            evaluation.providerName ||
+            (await this.refreshProviderName(evaluation.providerId, { tx }));
+
           for (const testResult of evaluation.testResults) {
             // Shared data for all Protocols
             const dbTestResult: DbTestResultInsert = {
@@ -152,7 +258,7 @@ export class EvaluationService {
               startedAt: evaluation.startedAt,
               finishedAt: evaluation.finishedAt,
               score: testResult.isSuccess ? 1 : 0,
-              provider: evaluation.providerName,
+              provider: providerName,
               raw: testResult.raw,
               testName: testResult.testName,
             };
@@ -370,64 +476,7 @@ export class EvaluationService {
         ...getTableColumns(evaluationsTable),
         uploaderId: filesTable.uploaderId,
         promptSetName: promptSetsTable.title,
-        testResults: sql<TestResult[]>`
-          COALESCE(
-            jsonb_agg(
-              jsonb_build_object(
-                'isSuccess', (
-                  CASE WHEN ${gt(testResultsTable.score, 0)}
-                    THEN TRUE
-                    ELSE FALSE
-                  END
-                ),
-                'raw', ${testResultsTable.raw},
-                'testName', (
-                  CASE
-                    WHEN ${isNotNull(testResultsTable.testName)} THEN ${testResultsTable.testName}
-                    ELSE 'PeerBench Benchmark'
-                  END
-                ),
-                'result', (
-                  CASE
-                    WHEN ${isNull(evaluationsTable.promptSetId)} THEN ${testResultsTable.result}
-                    ELSE jsonb_build_object(
-                      'promptId', ${testResultsTable.promptId},
-
-                      -- Because of the test type, answerKey may not be available
-                      'correctAnswer', (
-                        CASE WHEN ${and(
-                          not(eq(promptsTable.answerKey, "")),
-                          isNotNull(promptsTable.answerKey)
-                        )}
-                          THEN ${promptsTable.answerKey}
-                          ELSE ${promptsTable.answer}
-                        END
-                      ),
-                      'prompt', ${promptsTable.fullPrompt},
-                      'modelId', ${testResultsTable.modelId},
-                      'response', ${testResultsTable.response},
-                      -- TODO: Completely remove taskId from the db schema
-                      -- 'taskId', ${testResultsTable.taskId},
-                      'modelName', ${testResultsTable.modelName},
-                      'modelHost', ${testResultsTable.modelHost},
-                      'modelOwner', ${testResultsTable.modelOwner},
-                      'provider', ${testResultsTable.provider},
-                      'startedAt', ${testResultsTable.startedAt},
-                      'finishedAt', ${testResultsTable.finishedAt},
-                      'source', ${evaluationsTable.source},
-
-                      -- Combine metadata from test result and prompt
-                      'metadata', ${testResultsTable.metadata} || ${promptsTable.metadata},
-                      'score', ${testResultsTable.score},
-                      'type', ${promptsTable.type}
-                    )
-                  END
-                )
-              )
-            ),
-            '[]'::jsonb
-          )
-       `,
+        totalTestCount: sql<number>`COUNT(DISTINCT ${testResultsTable.id})`,
       })
       .from(evaluationsTable)
       .innerJoin(filesTable, eq(evaluationsTable.fileId, filesTable.id))
@@ -446,6 +495,7 @@ export class EvaluationService {
         filesTable.uploaderId,
         promptSetsTable.title
       )
+      .orderBy(desc(evaluationsTable.finishedAt))
       .$dynamic();
 
     if (filters?.commitHash) {
@@ -486,6 +536,7 @@ export class EvaluationService {
             ELSE NULL
           END
         `,
+        promptType: promptsTable.type,
       })
       .from(testResultsTable)
       .innerJoin(
@@ -496,12 +547,14 @@ export class EvaluationService {
         promptSetsTable,
         eq(evaluationsTable.promptSetId, promptSetsTable.id)
       )
+      .leftJoin(promptsTable, eq(testResultsTable.promptId, promptsTable.id))
       .groupBy(
         promptSetsTable.title,
         evaluationsTable.protocolName,
         evaluationsTable.promptSetId,
         evaluationsTable.protocolAddress,
-        testResultsTable.provider
+        testResultsTable.provider,
+        promptsTable.type
       )
       .$dynamic();
 
@@ -520,6 +573,7 @@ export class EvaluationService {
     const promptSets: Record<number, string> = {};
     const protocols: Record<string, string> = {};
     const providers = new Set<string>();
+    const promptTypes = new Set<string>();
 
     for (const result of results) {
       if (result.promptSetId && result.promptSetTitle) {
@@ -530,6 +584,9 @@ export class EvaluationService {
       }
 
       providers.add(result.provider);
+      if (result.promptType) {
+        promptTypes.add(result.promptType);
+      }
     }
 
     return {
@@ -542,6 +599,7 @@ export class EvaluationService {
         address,
         name,
       })),
+      promptTypes: Array.from(promptTypes).sort(),
     };
   }
 
@@ -559,6 +617,7 @@ export class EvaluationService {
       uploaderId?: string;
       providerId?: number;
       offerId?: number;
+      promptType?: string;
     } = {}
   ) {
     const {
@@ -574,9 +633,25 @@ export class EvaluationService {
       providerId,
       offerId,
       provider,
+      promptType,
     } = options;
     const offset = (page - 1) * pageSize;
     const conditions = [];
+
+    // Index of the evaluation in the same file
+    const evaluationFileIndexQuery = db
+      .select({
+        id: evaluationsTable.id,
+        index: sql<number>`
+          ROW_NUMBER() OVER (
+            PARTITION BY ${evaluationsTable.fileId}
+            ORDER BY ${evaluationsTable.startedAt} DESC
+          ) - 1`
+          .mapWith(Number)
+          .as("index"),
+      })
+      .from(evaluationsTable)
+      .as("evaluation_file_indexes");
 
     let query = db
       .select({
@@ -596,9 +671,14 @@ export class EvaluationService {
         providers: sql<string[]>`
           jsonb_agg(DISTINCT ${testResultsTable.provider})
         `,
+        index: evaluationFileIndexQuery.index,
       })
       .from(evaluationsTable)
       .innerJoin(filesTable, eq(evaluationsTable.fileId, filesTable.id))
+      .innerJoin(
+        evaluationFileIndexQuery,
+        eq(evaluationsTable.id, evaluationFileIndexQuery.id)
+      )
       .leftJoin(
         testResultsTable,
         eq(evaluationsTable.id, testResultsTable.evaluationId)
@@ -607,14 +687,15 @@ export class EvaluationService {
         promptSetsTable,
         eq(evaluationsTable.promptSetId, promptSetsTable.id)
       )
-      .orderBy(desc(evaluationsTable.startedAt))
+      .orderBy(desc(evaluationsTable.finishedAt))
       .limit(pageSize)
       .offset(offset)
       .groupBy(
         evaluationsTable.id,
         filesTable.id,
         filesTable.cid,
-        promptSetsTable.title
+        promptSetsTable.title,
+        evaluationFileIndexQuery.index
       )
       .$dynamic();
 
@@ -637,7 +718,11 @@ export class EvaluationService {
         eq(testResultsTable.evaluationId, evaluationsTable.id)
       );
 
-      if (promptSetId !== undefined) {
+      if (
+        promptSetId !== undefined &&
+        promptSetId !== null &&
+        !isNaN(promptSetId)
+      ) {
         conditions.push(eq(evaluationsTable.promptSetId, promptSetId));
       }
       if (model !== undefined) {
@@ -650,6 +735,21 @@ export class EvaluationService {
       }
       if (provider !== undefined) {
         conditions.push(eq(testResultsTable.provider, provider));
+      }
+    }
+    if (promptType !== undefined) {
+      totalCountQuery = totalCountQuery.leftJoin(
+        promptsTable,
+        eq(testResultsTable.promptId, promptsTable.id)
+      );
+      query = query.leftJoin(
+        promptsTable,
+        eq(testResultsTable.promptId, promptsTable.id)
+      );
+      if (promptType !== undefined) {
+        conditions.push(
+          eq(sql`${promptsTable.type}`, promptType as PromptType)
+        );
       }
     }
     if (uploaderId !== undefined) {

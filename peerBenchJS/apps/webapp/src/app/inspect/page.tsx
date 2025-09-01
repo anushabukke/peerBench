@@ -2,8 +2,8 @@
 
 import { InspectTable } from "./components/InspectTable";
 import { PageContextProvider, usePageContext } from "./context";
-import LoadingSpinner from "@/components/LoadingSpinner";
-import { Pagination } from "@/components/Pagination";
+import LoadingSpinner from "@/components/loading-spinner";
+import { Pagination } from "@/components/pagination";
 import { useSearchParams, useRouter } from "next/navigation";
 import React, { useEffect } from "react";
 
@@ -53,7 +53,7 @@ function InspectPageContent() {
             currentPage={page}
             pageSize={pageSize}
             totalItemCount={total}
-            isLoading={loading}
+            disabled={loading}
             onPageSizeChange={(pageSize) => {
               setPageSize(pageSize);
               setPage(1);

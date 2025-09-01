@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getUser } from "../actions/auth";
+import { getUser } from "@/lib/actions/auth";
 import BenchmarkPage from "./BenchmarkPage";
 
 export default async function Page() {

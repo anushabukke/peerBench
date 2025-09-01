@@ -32,16 +32,17 @@
   ],
   "scripts": {
     "lint": "tsc && eslint",
-    "dev": "tsup --silent --watch --onSuccess 'tsc-alias -p tsconfig.json -f'",
+    "dev": "tsx scripts/dev.ts",
+    "watch": "tsup --silent --watch --onSuccess 'tsc-alias -p tsconfig.json -f'",
     "build": "tsup --onSuccess 'tsc-alias -p tsconfig.json -f'",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@dotenvx/dotenvx": "^1.39.1",
     "@inquirer/prompts": "^7.4.1",
+    "@supabase/supabase-js": "^2.56.0",
     "abort-controller": "^3.0.0",
     "ansis": "^3.17.0",
-    "axios": "^1.8.4",
+    "axios": "^1.11.0",
     "cheerio": "^1.1.2",
     "commander": "^13.1.0",
     "csv": "^6.3.11",
@@ -58,6 +59,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@dotenvx/dotenvx": "^1.49.0",
     "@eslint/js": "^9.24.0",
     "@types/node": "^22.14.0",
     "eslint": "^9.24.0",

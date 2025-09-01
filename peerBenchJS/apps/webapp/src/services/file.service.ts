@@ -67,6 +67,8 @@ export class FileService {
   }
 }
 
+export type RawFile = Awaited<ReturnType<typeof FileService.getFile>>;
+
 export type GetFilesOptions = Parameters<(typeof FileService)["getFiles"]>[0];
 
 export type FileListItem = Awaited<

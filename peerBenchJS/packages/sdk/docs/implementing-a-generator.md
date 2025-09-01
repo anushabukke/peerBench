@@ -6,9 +6,40 @@ This guide demonstrates how to implement a new Generator for the peerBench SDK.
 
 Generators are responsible for taking the collected data from a Collector and generate one or more Prompts based on that data.
 
+### Quick setup test 
+```
+npm i
+cd packages/sdk/scripts
+npx tsx scripts/pubmed_gen_debug_example.ts    
+```
+
 ## Basic Example
 
-Here's a simple generator implementation that demonstrates the basic structure:
+### Required Properties
+
+**`readonly identifier: string`**
+
+- A unique string that identifies your Generator
+- Should be descriptive and unique across all Generators
+- Useful when you try to find this Generator among the others
+
+**`inputSchema: z.ZodSchema`**
+
+- A Zod schema that validates the input data of the `generatePrompts` method
+- If you want to process data from different Collectors, simply you need to make this schema compatible with the output types of those Collectors
+- Base class handles the validation of the input so you just need to define the schema
+
+### Abstract Methods
+
+**`protected async generatePrompts(input: z.infer<(typeof this)["inputSchema"]>, options?: Record<string, any>): Promise<Prompt[]>`**
+
+- This is the main generation method you must implement
+- Takes validated input data that matches your `inputSchema`
+- Optional `options` parameter for configurable generation behavior
+- Must return an array of `Prompt` objects
+- The input is already validated by the base class
+
+Here's a simple Generator implementation that demonstrates the basic structure:
 
 ```typescript
 import { AbstractGenerator } from "@/generators/abstract/abstract-generator";
@@ -46,30 +77,6 @@ export class SimpleQuestionGenerator extends AbstractGenerator {
 }
 ```
 
-### Required Properties
-
-**`readonly identifier: string`**
-
-- A unique string that identifies your Generator
-- Should be descriptive and unique across all Generators
-- Useful when you try to find this Generator among the others
-
-**`inputSchema: z.ZodSchema`**
-
-- A Zod schema that validates the input data of the `generatePrompts` method
-- If you want to process data from different Collectors, simply you need to make this schema compatible with the output types of those Collectors
-- Base class handles the validation of the input so you just need to define the schema
-
-### Abstract Methods
-
-**`protected async generatePrompts(input: z.infer<(typeof this)["inputSchema"]>, options?: Record<string, any>): Promise<Prompt[]>`**
-
-- This is the main generation method you must implement
-- Takes validated input data that matches your `inputSchema`
-- Optional `options` parameter for configurable generation behavior
-- Must return an array of `Prompt` objects
-- The input is already validated by the base class
-
 ## Type Compatibility Between Collectors and Generators
 
 The key to making Collectors and Generators work together is ensuring schema compatibility. When you define a Generator, the `inputSchema` specifies what input data structure the Generator expects.
@@ -100,6 +107,53 @@ const generator = new QuestionGenerator();
 const collectedData = await collector.collect("path/to/file");
 const prompts = await generator.generate(collectedData); // Schema validation ensures compatibility
 ```
+
+## How to Test
+
+Once you've implemented your Generator, you can test it by using it inside the `packages/sdk/scripts/dev.ts` file. Here's a complete example:
+
+```typescript
+import { SimpleQuestionGenerator } from "@/generators/simple-question-generator";
+
+async function main() {
+  // Test your custom Generator
+  const generator = new SimpleQuestionGenerator();
+
+  // Test with mock data
+  const mockInput = [
+    {
+      id: "1",
+      content: "Sample content for testing",
+      metadata: { source: "test", category: "example" },
+    },
+    {
+      id: "2",
+      content: "Another sample content",
+      metadata: { source: "test", category: "example" },
+    },
+  ];
+
+  try {
+    const prompts = await generator.generate(mockInput);
+    console.log("Generated prompts:", prompts);
+    console.log(`Successfully generated ${prompts.length} prompts`);
+  } catch (error) {
+    console.error("Generation failed:", error);
+  }
+}
+
+main().catch(console.error);
+```
+
+### Run it
+
+Navigate to the `packages/sdk` directory and run:
+
+```bash
+npm run dev
+```
+
+This will execute `dev.ts`.
 
 ## Examples
 

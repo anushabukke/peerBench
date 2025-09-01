@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { EvaluationService } from "@/services/evaluation.service";
-import { withAuth } from "@/middleware";
 import { z } from "zod";
-import { type AuthResult } from "@/utils/auth";
+import { AuthResult } from "@/route-helpers/authenticate-request";
+import { withAuth } from "@/route-wrappers/with-auth";
 
 export const revalidate = 0;
 

@@ -48,7 +48,7 @@ export function LeaderboardTableRow({
           className="underline text-blue-500"
           href={`/leaderboard/details/${entry.model}?${
             isLLMLeaderboard
-              ? `promptSet=${leaderboard.promptSetId}`
+              ? `promptSet=${leaderboard.promptSetId}${leaderboard.promptType ? `&promptType=${leaderboard.promptType}` : ""}`
               : `protocol=${leaderboard.context}`
           }`}
         >
@@ -59,7 +59,8 @@ export function LeaderboardTableRow({
         <>
           <TableCell className="text-left">
             <span className="font-semibold text-gray-900">
-              {((entry.accuracy || 0) * 100).toFixed(2)}%
+              {((entry.accuracy || 0) * 100).toFixed(2)}
+              {leaderboard.promptType === "multiple-choice" ? "%" : ""}
             </span>
           </TableCell>
           <RecentRun />

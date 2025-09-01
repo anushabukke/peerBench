@@ -1,57 +1,111 @@
 "use client";
+
 import { cn } from "@/lib/utils";
 import { Button } from "./ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { useCallback, useMemo } from "react";
 
-interface PaginationProps {
+export type PaginationProps = {
+  sizeOptions?: number[];
   currentPage: number;
   pageSize: number;
   totalItemCount: number;
-  isLoading?: boolean;
+  disabled?: boolean;
   onPageSizeChange?: (pageSize: number) => void;
   onPageChange?: (page: number, direction: "next" | "prev") => void;
-}
-
-const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+};
 
 export function Pagination({
   currentPage,
   pageSize,
   totalItemCount,
-  isLoading,
+  disabled,
   onPageSizeChange,
   onPageChange,
+  sizeOptions = [10, 20, 50, 100],
 }: PaginationProps) {
-  const hasNextPage = currentPage * pageSize < totalItemCount;
-  const hasPrevPage = currentPage > 1;
+  const hasNextPage = useMemo(
+    () => currentPage * pageSize < totalItemCount,
+    [currentPage, pageSize, totalItemCount]
+  );
+  const hasPrevPage = useMemo(() => currentPage > 1, [currentPage]);
+  const totalPages = useMemo(
+    () => Math.ceil(totalItemCount / pageSize),
+    [totalItemCount, pageSize]
+  );
+  const availablePages = useMemo(
+    () => Array.from({ length: totalPages }, (_, i) => i + 1),
+    [totalPages]
+  );
+
+  const handlePageChange = useCallback(
+    (page: string) => {
+      const pageNumber = parseInt(page);
+      if (pageNumber >= 1 && pageNumber <= totalPages) {
+        onPageChange?.(pageNumber, pageNumber > currentPage ? "next" : "prev");
+      }
+    },
+    [currentPage, onPageChange, totalPages]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (value: string) => {
+      onPageSizeChange?.(Number(value));
+    },
+    [onPageSizeChange]
+  );
+
+  const handlePrevPage = useCallback(() => {
+    if (hasPrevPage) {
+      onPageChange?.(currentPage - 1, "prev");
+    }
+  }, [currentPage, hasPrevPage, onPageChange]);
+
+  const handleNextPage = useCallback(() => {
+    if (hasNextPage) {
+      onPageChange?.(currentPage + 1, "next");
+    }
+  }, [currentPage, hasNextPage, onPageChange]);
 
   return (
     <div
       className={cn(
-        "bg-white rounded-lg border shadow-sm flex items-center justify-between px-4 py-3 border-t border-gray-200 sm:px-6",
-        isLoading && "cursor-progress bg-gray-100"
+        "bg-white dark:bg-gray-800 rounded-lg border shadow-sm flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700 sm:px-6",
+        disabled && "cursor-progress bg-gray-100 dark:bg-gray-700"
       )}
     >
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <label htmlFor="pageSize" className="text-sm text-gray-700">
+          <label className="text-sm text-gray-700 dark:text-gray-300">
             Show
           </label>
-          <select
-            disabled={isLoading}
-            id="pageSize"
-            value={pageSize}
-            onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
-            className="block w-full rounded-md border-0 py-1.5 pl-3 pr-10 text-gray-900 ring-1 ring-inset ring-gray-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6"
+          <Select
+            value={pageSize.toString()}
+            onValueChange={handlePageSizeChange}
+            disabled={disabled}
           >
-            {PAGE_SIZE_OPTIONS.map((size) => (
-              <option key={size} value={size}>
-                {size}
-              </option>
-            ))}
-          </select>
-          <span className="text-sm text-gray-700">entries</span>
+            <SelectTrigger className="w-20">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {sizeOptions.map((size) => (
+                <SelectItem key={size} value={size.toString()}>
+                  {size}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-gray-700 dark:text-gray-300">
+            entries
+          </span>
         </div>
-        <div className="text-sm text-gray-700">
+        <div className="text-sm text-gray-700 dark:text-gray-300">
           Showing{" "}
           <span className="font-medium">
             {(currentPage - 1) * pageSize + 1}
@@ -67,15 +121,40 @@ export function Pagination({
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
-          onClick={() => onPageChange?.(currentPage - 1, "prev")}
-          disabled={!hasPrevPage || isLoading}
+          onClick={handlePrevPage}
+          disabled={!hasPrevPage || disabled}
         >
           Previous
         </Button>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700 dark:text-gray-300">Page</span>
+          <Select
+            value={currentPage.toString()}
+            onValueChange={handlePageChange}
+            disabled={disabled}
+          >
+            <SelectTrigger className="">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {availablePages.map((page) => (
+                <SelectItem key={page} value={page.toString()}>
+                  {page}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-gray-700 dark:text-gray-300">of</span>
+          <span className="font-medium text-gray-900 dark:text-gray-100">
+            {totalPages}
+          </span>
+        </div>
+
         <Button
           variant="outline"
-          onClick={() => onPageChange?.(currentPage + 1, "next")}
-          disabled={!hasNextPage || isLoading}
+          onClick={handleNextPage}
+          disabled={!hasNextPage || disabled}
         >
           Next
         </Button>

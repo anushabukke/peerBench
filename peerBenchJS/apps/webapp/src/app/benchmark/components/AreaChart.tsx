@@ -2,7 +2,7 @@
 
 import { BenchmarkResult } from "../BenchmarkPage";
 import { PeerAggregation } from "@/services/prompt.service";
-import { formatOrdinal } from "@/string/format-ordinal";
+import { formatOrdinal } from "@/utils/format-ordinal";
 import { ApexOptions } from "apexcharts";
 import dynamic from "next/dynamic";
 

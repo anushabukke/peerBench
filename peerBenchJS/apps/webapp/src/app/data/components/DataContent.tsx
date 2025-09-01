@@ -16,7 +16,7 @@ import {
   Legend,
 } from "recharts";
 import { useState } from "react";
-import { FeedbackFlag } from "@/types/feedback";
+import { FeedbackFlag } from "@/types/review";
 
 interface DataContentProps {
   promptSets: PromptSet[];

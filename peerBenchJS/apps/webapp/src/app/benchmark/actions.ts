@@ -16,7 +16,11 @@ export async function getPeerAggregations(promptSetId: number) {
 export async function getPromptSets() {
   try {
     const promptSets = await PromptSetService.getPromptSets();
-    return { success: true, data: promptSets };
+    return {
+      success: true,
+      // TODO: Hide PubMed temporarily
+      data: promptSets.filter((ps) => ps.title.toLowerCase() !== "pubmed"),
+    };
   } catch (error) {
     console.error("Error fetching prompt sets:", error);
     return { success: false, error: "Failed to fetch prompt sets" };

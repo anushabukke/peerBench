@@ -1,6 +1,7 @@
 import { leaderboardView } from "@/database/views";
 import { db } from "../database/client";
-import { and, desc, eq, not } from "drizzle-orm";
+import { and, desc, eq, like, not, sql } from "drizzle-orm";
+import { capitalize } from "@/utils/capitalize";
 
 export type LeaderboardItem = {
   model: string;
@@ -15,6 +16,7 @@ export type LeaderboardItem = {
 export type Leaderboard = {
   context: string;
   promptSetId: number | null;
+  promptType: string | null;
   entries: LeaderboardItem[];
 };
 
@@ -29,7 +31,12 @@ export class LeaderboardService {
         desc(leaderboardView.uniquePrompts),
         desc(leaderboardView.totalTestsPerformed)
       )
-      .where(not(eq(leaderboardView.context, "Machine Translation"))) // TODO: Temporarily hide machine translation related entries
+      .where(
+        and(
+          not(eq(leaderboardView.context, "Machine Translation")),
+          not(like(sql`LOWER(${leaderboardView.context})`, "courtlistener%"))
+        )
+      ) // TODO: Temporarily hide machine translation related entries
       .$dynamic();
   }
 
@@ -76,16 +83,24 @@ export class LeaderboardService {
     const leaderboards = new Map<string, Leaderboard>();
 
     entries.forEach((entry) => {
-      // One of them is always available
-      if (!leaderboards.has(entry.context)) {
-        leaderboards.set(entry.context, {
-          context: entry.context,
+      const key =
+        entry.promptType && entry.promptType !== "multiple-choice"
+          ? `${entry.context} - ${entry.promptType
+              .split("-")
+              .map((word) => capitalize(word))
+              .join(" ")}`
+          : entry.context;
+
+      if (!leaderboards.has(key)) {
+        leaderboards.set(key, {
+          context: key,
           promptSetId: entry.promptSetId,
+          promptType: entry.promptType,
           entries: [],
         });
       }
 
-      const leaderboard = leaderboards.get(entry.context)!;
+      const leaderboard = leaderboards.get(key)!;
 
       leaderboard.entries.push({
         model: entry.model,

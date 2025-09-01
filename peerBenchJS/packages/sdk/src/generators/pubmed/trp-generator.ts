@@ -43,7 +43,7 @@ export class TRPGenerator extends AbstractGenerator {
 
   async generatePrompts(
     input: TypeOf<this["inputSchema"]>,
-    options?: Record<string, any>
+    options?: z.input<(typeof this)["optionsSchema"]>
   ) {
     const parsedOptions = this.optionsSchema.parse(options);
     const provider = new OpenRouterProvider({
@@ -51,11 +51,13 @@ export class TRPGenerator extends AbstractGenerator {
     });
 
     // Generate Prompts for each article
-    return await Promise.all(
+    const generatedPrompts = await Promise.all(
       input.map((article) =>
         this.generatePromptFromArticle(article, provider, parsedOptions)
       )
     );
+
+    return generatedPrompts.filter((prompt) => prompt !== null);
   }
 
   private async generatePromptFromArticle(
@@ -82,6 +84,10 @@ export class TRPGenerator extends AbstractGenerator {
       systemPrompt: options.nerPrompt,
     });
 
+    if (!entities) {
+      return null;
+    }
+
     const modifiedText = replaceEntities(text, entities, options.placeholder);
 
     const fullPrompt = `TEXT:\n${modifiedText!}\n\nENTITIES:\n${entities!
@@ -92,7 +98,7 @@ export class TRPGenerator extends AbstractGenerator {
     return await this.buildPrompt({
       question: modifiedText,
       fullPrompt,
-      correctAnswer: "",
+      correctAnswer: text, // Original formatted text is the correct answer
       type: PromptTypes.TextReplacement,
       metadata: {
         articleTags: article.tags,

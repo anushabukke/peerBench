@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { FileListItem } from "@/services/file.service";
-import { getFiles } from "./actions";
+import { usePreloader } from "@/hooks/usePreloader";
 
 interface PageContextValue {
   items: FileListItem[];
@@ -31,6 +31,7 @@ interface PageContextProviderProps {
 }
 
 export const PageContextProvider = ({ children }: PageContextProviderProps) => {
+  const { getCachedData, isDataAvailable, isPreloading } = usePreloader();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [items, setItems] = useState<FileListItem[]>([]);
@@ -47,21 +48,42 @@ export const PageContextProvider = ({ children }: PageContextProviderProps) => {
   useEffect(() => {
     setLoading(true);
     setError(null);
-    getFiles({
-      page,
-      pageSize,
-    })
-      .then((data) => {
-        setItems(data.results);
-        setTotal(data.total);
-      })
-      .catch((err) => {
-        setError(err.message || "Failed to fetch audit files");
-      })
-      .finally(() => {
+
+    // Try to get cached data first for the first page
+    if (page === 1) {
+      const cachedInspect = getCachedData('inspect');
+      if (cachedInspect) {
+        setItems(cachedInspect.files);
+        setTotal(cachedInspect.total);
         setLoading(false);
-      });
-  }, [page, pageSize]);
+        return;
+      }
+    }
+
+    // If no cached data or not first page, fetch fresh data
+    if ((!isDataAvailable('inspect') && !isPreloading) || page !== 1) {
+      fetch(`/api/v1/inspect/files?page=${page}&pageSize=${pageSize}`)
+        .then((response) => {
+          if (response.ok) {
+            return response.json();
+          }
+          throw new Error('Failed to fetch files');
+        })
+        .then((data) => {
+          setItems(data.results);
+          setTotal(data.total);
+        })
+        .catch((err) => {
+          setError(err.message || "Failed to fetch audit files");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      // Still preloading, keep loading state
+      setLoading(true);
+    }
+  }, [page, pageSize, getCachedData, isDataAvailable, isPreloading]);
 
   return (
     <PageContext.Provider

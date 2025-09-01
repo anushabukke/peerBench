@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DbPrompt } from "@/database/schema";
-import { getPrompt } from "@/actions/getPrompt";
-import { getPromptIds } from "@/actions/getPromptIds";
-import { saveAnswer } from "@/actions/saveAnswer";
+import { getPrompt } from "@/lib/actions/get-prompt";
+import { getPromptIds } from "@/lib/actions/get-prompt-ids";
+import { saveAnswer } from "@/lib/actions/save-answer";
 import { toast } from "react-toastify";
 import { User } from "@supabase/supabase-js";
-import { getUser } from "@/app/actions/auth";
+import { getUser } from "@/lib/actions/auth";
 
 export function useQuiz() {
   const { promptId, promptSetId } = useParams();
