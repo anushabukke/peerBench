@@ -1,3 +1,6 @@
+/**
+ * Merges the paragraphs of a Pubmed article into a single string.
+ */
 export function paragraphMerge(
   paragraphs: Record<string, string>,
   strategy: ParagraphMergeStrategyType

@@ -9,3 +9,4 @@ export * from "./did";
 export * from "./string";
 export * from "./llm";
 export * from "./validation";
+export * from "./builder";

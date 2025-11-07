@@ -27,23 +27,7 @@ export class NewsAPICollector extends AbstractCollector<NewsArticle[]> {
   readonly identifier = "news-api";
 
   // API configuration - these would be set during initialization
-  private apiKey: string; // Authentication key for the API
   private baseUrl = "https://newsapi.org/v2"; // Base URL for API endpoints
-
-  /**
-   * Constructor for the NewsAPI collector
-   *
-   * @param apiKey - Authentication key required to access the news API
-   *
-   * The constructor demonstrates how to:
-   * - Accept configuration parameters
-   * - Store sensitive information securely
-   * - Initialize the collector with required credentials
-   */
-  constructor(apiKey: string) {
-    super(); // Call parent constructor
-    this.apiKey = apiKey; // Store the API key for later use
-  }
 
   /**
    * Main collection method - fetches news articles based on search query
@@ -69,10 +53,12 @@ export class NewsAPICollector extends AbstractCollector<NewsArticle[]> {
     searchQuery: string,
     options: {
       includeSensitiveContent?: boolean; // Option to include sensitive content
-    } = {
-      includeSensitiveContent: false, // Default to excluding sensitive content
+      apiKey: string;
     }
   ): Promise<NewsArticle[] | undefined> {
+    // Default to excluding sensitive content
+    const includeSensitiveContent = options.includeSensitiveContent ?? false;
+
     // Type guard: ensure the source is a string search query
     // This prevents runtime errors from invalid input types
     if (typeof searchQuery !== "string") {
@@ -83,8 +69,8 @@ export class NewsAPICollector extends AbstractCollector<NewsArticle[]> {
     // URLSearchParams automatically handles URL encoding and parameter formatting
     const params = new URLSearchParams();
     params.set("q", searchQuery); // Set the search query
-    params.set("apiKey", this.apiKey); // Add authentication
-    if (options.includeSensitiveContent) {
+    params.set("apiKey", options.apiKey); // Add authentication
+    if (includeSensitiveContent) {
       params.set("sensitive", "true"); // Optional parameter for content filtering
     }
 

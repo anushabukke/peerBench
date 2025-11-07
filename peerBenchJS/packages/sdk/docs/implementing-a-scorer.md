@@ -18,24 +18,29 @@ Scorers are responsible for taking a Response that is made for a Prompt and givi
 
 ### Abstract Methods
 
-**`scoreOne(response: PromptResponse, options?: Record<string, any>): Promise<number | undefined>`**
+**`scoreOne(response: PromptResponse, options?: Record<string, any>): MaybePromise<PromptScore | undefined>`**
 
 - This is the main scoring method you must implement
 - Takes a `PromptResponse` object containing both the Prompt and Response
 - Optional `options` parameter for configurable scoring behavior
-- Must return a number between 0 and 1, or `undefined` if scoring fails
-- The number represents the score: 1.0 = perfect, 0.0 = completely wrong
+- Must return a `PromptScore` object or `undefined` if scoring fails
+- The `PromptScore` object includes the original response data plus a `score` field (number between 0 and 1)
+- The score represents: 1.0 = perfect, 0.0 = completely wrong
+- The `PromptScore` structure extends `PromptResponse` with additional fields:
+  - `score?: number` - The calculated score (0-1)
+  - `metadata?: Record<string, any>` - Additional metadata about the scoring
 
-**`canScore(response: PromptResponse): Promise<boolean>`**
+**`canScore(response: PromptResponse): MaybePromise<boolean>`**
 
 - This method determines if your Scorer can handle a specific Response
 - Returns `true` if your Scorer implementation is eligible to score the Response and `false` if it isn't.
+- `MaybePromise<T>` means the method can return either `T` or `Promise<T>` (synchronous or asynchronous)
 
 Here's a very simple scorer implementation that demonstrates the basic structure:
 
 ```typescript
 import { AbstractScorer } from "@/scorers/abstract/abstract-scorer";
-import { PromptResponse } from "@/types";
+import { PromptResponse, PromptScore } from "@/types";
 
 export class SimpleExactMatchScorer extends AbstractScorer {
   readonly identifier = "simple-exact-match";
@@ -43,25 +48,42 @@ export class SimpleExactMatchScorer extends AbstractScorer {
   async scoreOne(
     response: PromptResponse,
     options?: Record<string, any>
-  ): Promise<number | undefined> {
+  ): Promise<PromptScore | undefined> {
+    if (!(await this.canScore(response))) {
+      return undefined;
+    }
+
     // Extract the correct answer from the prompt
     const correctAnswer = response.prompt.answer;
 
     // Get the model's response
-    const modelResponse = response.response.content;
+    const modelResponse = response.data;
 
     // Simple exact match scoring (case-insensitive)
     const isCorrect =
-      correctAnswer.toLowerCase().trim() === modelResponse.toLowerCase().trim();
+      correctAnswer?.toLowerCase().trim() ===
+      modelResponse?.toLowerCase().trim();
 
-    // Return 1.0 for correct answers, 0.0 for incorrect
-    return isCorrect ? 1.0 : 0.0;
+    // Calculate score: 1.0 for correct answers, 0.0 for incorrect
+    const score = isCorrect ? 1.0 : 0.0;
+
+    // Return PromptScore object with the original response data plus score and metadata
+    return {
+      ...response,
+      score,
+      metadata: {
+        scorerIdentifier: this.identifier,
+        isExactMatch: isCorrect,
+      },
+    } as PromptScore;
   }
 
   async canScore(response: PromptResponse): Promise<boolean> {
-    // This scorer can handle any response that has content
+    // This scorer can handle any response that has data and a prompt with an answer
     return (
-      response.response.content && typeof response.response.content === "string"
+      response.data !== undefined &&
+      response.prompt !== undefined &&
+      response.prompt.answer !== undefined
     );
   }
 }
@@ -105,7 +127,7 @@ async function main() {
       metadata: {},
       scorers: ["simple-exact-match"],
     },
-    data: "A", // Correct answer
+    data: "Paris", // Correct answer
     provider: "mock",
     modelId: "mock-model",
     modelName: "Mock Model",
@@ -124,7 +146,7 @@ async function main() {
 
   const wrongResponse = {
     ...mockResponse,
-    data: "C", // Wrong answer
+    data: "London", // Wrong answer
   };
 
   // Test if the Scorer can handle these responses
@@ -135,13 +157,17 @@ async function main() {
   console.log("Can score wrong response:", canScoreWrong);
 
   if (canScoreCorrect) {
-    const correctScore = await scorer.scoreOne(mockResponse);
-    console.log("Correct answer score:", correctScore);
+    const correctScoreResult = await scorer.scoreOne(mockResponse);
+    console.log("Correct answer score result:", correctScoreResult);
+    console.log("Score:", correctScoreResult?.score);
+    console.log("Metadata:", correctScoreResult?.metadata);
   }
 
   if (canScoreWrong) {
-    const wrongScore = await scorer.scoreOne(wrongResponse);
-    console.log("Wrong answer score:", wrongScore);
+    const wrongScoreResult = await scorer.scoreOne(wrongResponse);
+    console.log("Wrong answer score result:", wrongScoreResult);
+    console.log("Score:", wrongScoreResult?.score);
+    console.log("Metadata:", wrongScoreResult?.metadata);
   }
 }
 
@@ -160,9 +186,10 @@ This will execute `dev.ts`.
 
 ## Examples
 
-See the `examples/scorers/` directory for complete working examples:
+See the `src/scorers/` directory for complete working examples:
 
-- `exact-match-scorer.ts` - Exact match scoring
-- `semantic-similarity-scorer.ts` - Semantic similarity scoring
+- `exact-match-scorer.ts` - Exact match scoring that returns PromptScore objects
+- `multiple-choice-scorer.ts` - Multiple choice scoring with answer extraction
+- `ref-answer-equality-llm-judge-scorer.ts` - LLM-based scoring for reference answer equality
 
-These examples demonstrate real-world implementations and can serve as templates for your own Scorers.
+These examples demonstrate real-world implementations and show how to properly return `PromptScore` objects with scores and metadata. They can serve as templates for your own Scorers.

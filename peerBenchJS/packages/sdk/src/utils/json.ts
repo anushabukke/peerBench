@@ -1,3 +1,5 @@
+import { stringify } from "safe-stable-stringify";
+
 /**
  * Parses JSONL formatted string into an array
  * @returns An array of parsed JSON lines
@@ -21,7 +23,7 @@ export function parseJSONL<T>(
 
 /**
  * Tries to parse the given string as JSON.
- * Returns undefined if it is not a valid JSON entity.
+ * Returns `undefined` if it is not a valid JSON entity.
  */
 export function tryParseJson<T = any>(content: string): T | undefined {
   try {
@@ -29,4 +31,12 @@ export function tryParseJson<T = any>(content: string): T | undefined {
   } catch {
     // Invalid JSON
   }
+}
+
+/**
+ * Stringifies the given JSON value using `safe-stable-stringify` in a stable manner.
+ * This stable method generates the same string output for the same input value (including objects).
+ */
+export function stableStringify(value: any) {
+  return stringify(value);
 }

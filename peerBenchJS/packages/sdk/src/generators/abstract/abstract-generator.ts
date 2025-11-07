@@ -112,10 +112,19 @@ export abstract class AbstractGenerator {
         sha256: questionSHA256,
       },
 
-      answer: params.correctAnswer,
+      // If the Prompt is a Multiple Choice, the answer data should be
+      // the value of the correct answer key
+      answer:
+        params.options === undefined || Object.keys(params.options).length === 0
+          ? params.correctAnswer
+          : params.options[params.correctAnswer], // If the options is provided then the correctAnswer points to the letter of the correct answer
 
       // Answer key is only valid when the options are provided
-      answerKey: params.options === undefined ? "" : params.correctAnswer,
+      // which means the Prompt is a multiple choice question
+      answerKey:
+        params.options === undefined || Object.keys(params.options).length === 0
+          ? ""
+          : params.correctAnswer,
 
       options: params.options ?? {},
 

@@ -1,9 +1,6 @@
 // Types
 export * from "./types";
 
-// Actions
-export * from "./actions";
-
 // Collectors
 export * from "./collectors";
 
@@ -23,7 +20,7 @@ export * from "./registries";
 export * from "./scorers";
 
 // Task Schemas
-export * from "./task-schemas";
+export * from "./parsers";
 
 // Utils
 export * from "./utils";

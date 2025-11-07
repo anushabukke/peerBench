@@ -95,3 +95,10 @@ export function stringToBuffer(str: string): Uint8Array {
   const encoder = new TextEncoder();
   return encoder.encode(str);
 }
+
+/**
+ * Python like string formatter. Replaces the `{key}` with the value from the `values` object.
+ */
+export function formatString(str: string, values: Record<string, string>) {
+  return str.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? `{${key}}`);
+}

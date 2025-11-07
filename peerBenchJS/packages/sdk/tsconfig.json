@@ -19,5 +19,5 @@
     }
   },
   "exclude": ["node_modules", "dist"],
-  "include": ["src/**/*", "examples/**/*", "scripts/**/*"]
+  "include": ["src/**/*", "scripts/**/*"]
 }

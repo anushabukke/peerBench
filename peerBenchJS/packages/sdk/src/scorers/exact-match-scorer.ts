@@ -1,5 +1,6 @@
 import { AbstractScorer } from "./abstract/abstract-scorer";
-import { PromptResponse } from "@/types";
+import { PromptResponse, PromptScoreSchema, ScoringMethods } from "@/types";
+import { v7 as uuidv7 } from "uuid";
 
 /**
  * It can be used both for multiple choice and free form questions.
@@ -15,13 +16,33 @@ export class ExactMatchScorer extends AbstractScorer {
       return undefined;
     }
 
-    // Use `answerKey` field
-    if (Object.keys(response.prompt.options).length > 0) {
-      return response.data === response.prompt.answerKey ? 1 : 0;
+    let score = 0;
+
+    // Use `answerKey` field for multiple choice questions
+    // (If a Prompt has options, then it is a multiple choice question)
+    if (
+      response.prompt.options !== undefined &&
+      Object.keys(response.prompt.options).length > 0
+    ) {
+      score =
+        response.data?.trim() === response.prompt.answerKey?.trim() ? 1 : 0;
+    } else {
+      // Use `answer` field
+      score = response.data?.trim() === response.prompt.answer?.trim() ? 1 : 0;
     }
 
-    // Use `answer` field
-    return response.data === response.prompt.answer ? 1 : 0;
+    return PromptScoreSchema.parse({
+      ...response,
+      score,
+      scoreDID: uuidv7(),
+      method: ScoringMethods.algo,
+      prompt: response.prompt,
+      scoreMetadata: {
+        scorerIdentifier: this.identifier,
+        extractedAnswer: response.data?.trim(),
+      },
+      explanation: undefined,
+    });
   }
 
   async canScore(response: PromptResponse): Promise<boolean> {

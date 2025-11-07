@@ -104,8 +104,8 @@ export class PubMedCollector extends AbstractRSSCollector<PubMedCollectedData> {
 }
 
 export type PubMedCollectedData = {
-  pmid: any;
-  title: any;
+  pmid: string;
+  title: string;
   paragraphs: Record<string, string>;
   tags: string[];
 }[];

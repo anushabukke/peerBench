@@ -1,91 +1,156 @@
 import { z } from "zod";
+import { DIDasUUIDSchema } from "./validation/did";
 
 export const PromptTypes = {
   MultipleChoice: "multiple-choice",
   OrderSentences: "order-sentences",
   TextReplacement: "text-replacement",
   Typo: "typo",
+  OpenEnded: "open-ended",
+  OpenEndedWithDocs: "open-ended-with-docs",
 } as const;
 
 export type PromptType = (typeof PromptTypes)[keyof typeof PromptTypes];
 
-export const PromptSchema = z.object({
+export const ScoringMethods = {
   /**
-   * Decentralized identifier of the Prompt
+   * Scored by a human
    */
-  did: z.string(),
-
-  /**
-   * The question that is going to be asked to the model
-   */
-  question: z.object({
-    /**
-     * Question data itself
-     */
-    data: z.string(),
-
-    /**
-     * CID v1 calculation of the question string
-     */
-    cid: z.string(),
-
-    /**
-     * SHA256 hash of the question string
-     */
-    sha256: z.string(),
-  }),
+  human: "human",
 
   /**
-   * Multiple choice answers for the question where the keys are letters and the values are the answer itself.
+   * Scored using an AI model
    */
-  options: z.record(z.string(), z.string()),
+  ai: "ai",
 
   /**
-   * Full prompt that is going to be sent to the model
+   * Scored using an algorithm
    */
-  fullPrompt: z.object({
+  algo: "algo",
+} as const;
+
+export type ScoringMethod =
+  (typeof ScoringMethods)[keyof typeof ScoringMethods];
+
+export const PromptSchema = z
+  .object({
     /**
-     * Full prompt itself
+     * Decentralized identifier of the Prompt
      */
-    data: z.string(),
+    did: DIDasUUIDSchema,
 
     /**
-     * CID v1 calculation of the full prompt string
+     * The question that is going to be asked to the model
      */
-    cid: z.string(),
+    question: z.object({
+      /**
+       * Question data itself
+       */
+      data: z.string(),
+
+      /**
+       * CID v1 calculation of the question string
+       */
+      cid: z.string(),
+
+      /**
+       * SHA256 hash of the question string
+       */
+      sha256: z.string(),
+    }),
 
     /**
-     * SHA256 hash of the full prompt string
+     * Multiple choice answers for the question where the keys are letters and the values are the answers.
      */
-    sha256: z.string(),
-  }),
+    options: z.record(z.string(), z.string()).optional(),
 
-  /**
-   * Type of the Prompt
-   */
-  type: z.nativeEnum(PromptTypes).default("multiple-choice"), // TODO: For the time being, use multiple choice type by default in order to not to break anything in the codebase
+    /**
+     * Full prompt that is going to be sent to the model
+     */
+    fullPrompt: z.object({
+      /**
+       * Full prompt itself
+       */
+      data: z.string(),
 
-  /**
-   * Expected option value for the question
-   */
-  answer: z.string(),
+      /**
+       * CID v1 calculation of the full prompt string
+       */
+      cid: z.string(),
 
-  /**
-   * Expected letter of the answer (e.g "A", "B" or "C")
-   */
-  answerKey: z.string(),
+      /**
+       * SHA256 hash of the full prompt string
+       */
+      sha256: z.string(),
+    }),
 
-  /**
-   * Additional metadata related to the Prompt
-   */
-  metadata: z.record(z.string(), z.any()).optional(),
+    /**
+     * Type of the Prompt
+     */
+    type: z.nativeEnum(PromptTypes),
 
-  /**
-   * Expected Scorer identifiers that can be used to
-   * score the Responses for this Prompt
-   */
-  scorers: z.array(z.string()).optional(),
-});
+    /**
+     * Expected option value for the question
+     */
+    answer: z.string().optional(),
+
+    /**
+     * Expected letter of the answer (e.g "A", "B" or "C")
+     */
+    answerKey: z.string().optional(),
+
+    /**
+     * Additional metadata related to the Prompt
+     */
+    metadata: z.record(z.string(), z.any()).optional(),
+
+    /**
+     * Expected Scorer identifiers that can be used to
+     * score the Responses for this Prompt
+     */
+    scorers: z.array(z.string()).optional(),
+  })
+  .transform((prompt, ctx) => {
+    if (prompt.type === PromptTypes.MultipleChoice) {
+      if (Object.keys(prompt.options || {}).length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "No options provided for multiple choice question",
+        });
+        return z.NEVER;
+      }
+
+      if (
+        Object.values(prompt.options || {}).some(
+          (value) => value?.trim() === ""
+        )
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Multiple choice options cannot be empty",
+        });
+        return z.NEVER;
+      }
+
+      if (!prompt.answerKey) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Correct answer key cannot be empty",
+        });
+        return z.NEVER;
+      }
+
+      if (!prompt.answer) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Correct answer value cannot be empty",
+        });
+        return z.NEVER;
+      }
+    }
+
+    return prompt;
+  });
 
 /**
  * PeerBench Prompt object
@@ -131,12 +196,17 @@ export type Task = z.infer<typeof TaskSchema>;
 
 export const PromptResponseSchema = z.object({
   /**
+   * Unique identifier of the Response
+   */
+  did: DIDasUUIDSchema,
+
+  /**
    * Name of the Provider that the Response comes from
    */
   provider: z.string(),
 
   /**
-   * Original ID of the Model that was used to get this Response
+   * ID of the Model that was used by the Provider
    */
   modelId: z.string(),
 
@@ -156,29 +226,24 @@ export const PromptResponseSchema = z.object({
   modelHost: z.string(),
 
   /**
-   * Task identifier
-   */
-  taskId: z.string(),
-
-  /**
    * The Prompt that used to achieve this Response.
    */
   prompt: PromptSchema,
 
   /**
-   * CID v1 calculation of the Response data. Undefined if the Response is failed.
+   * CID v1 calculation of the Response data.
    */
-  cid: z.string().optional(),
+  cid: z.string(),
 
   /**
-   * SHA256 calculation of the Response data. Undefined if the Response is failed.
+   * SHA256 calculation of the Response data.
    */
-  sha256: z.string().optional(),
+  sha256: z.string(),
 
   /**
-   * Response data itself. Undefined if the Response is failed.
+   * Response data itself.
    */
-  data: z.string().optional(),
+  data: z.string(),
 
   /**
    * Timestamp when the Prompt sent to the Model
@@ -186,64 +251,85 @@ export const PromptResponseSchema = z.object({
   startedAt: z.number(),
 
   /**
-   * Timestamp when the Model responded this particular Prompt. Undefined if the Response is failed.
+   * Timestamp when the Model responded this particular Prompt.
    */
-  finishedAt: z.number().optional(),
+  finishedAt: z.number(),
 
   /**
    * Unique identifier of which run this Response belongs to
    */
   runId: z.string(),
 
-  /**
-   * Source Task file that the Prompt of this Response comes from
-   */
-  sourceTaskFile: z.object({
-    /**
-     * CID v1 calculation
-     */
-    cid: z.string(),
+  inputTokensUsed: z.number().optional(),
+  outputTokensUsed: z.number().optional(),
+  inputCost: z.string().optional(),
+  outputCost: z.string().optional(),
 
-    /**
-     * SHA256 calculation
-     */
-    sha256: z.string(),
-
-    /**
-     * Base file name
-     */
-    fileName: z.string(),
-  }),
+  metadata: z.record(z.string(), z.any()).optional(),
 });
 
 export type PromptResponse = z.infer<typeof PromptResponseSchema>;
 
 export const PromptScoreSchema = PromptResponseSchema.extend({
-  // Make those fields optional because for NoData version of Score, we shouldn't include them
-  prompt: PromptSchema.extend({
-    options: PromptSchema.shape.options.optional(),
+  prompt:
+    // Modify some of the fields of the Prompt in case
+    // if the Score object doesn't want to include original Prompt data
+    PromptSchema.sourceType()
+      .extend({
+        options: PromptSchema.sourceType().shape.options.optional(),
 
-    question: PromptSchema.shape.question.extend({
-      data: z.string().optional(),
-    }),
+        question: PromptSchema.sourceType().shape.question.extend({
+          data: PromptSchema.sourceType().shape.question.shape.data.optional(),
+        }),
 
-    fullPrompt: PromptSchema.shape.fullPrompt.extend({
-      data: z.string().optional(),
-    }),
+        fullPrompt: PromptSchema.sourceType().shape.fullPrompt.extend({
+          data: PromptSchema.sourceType().shape.fullPrompt.shape.data.optional(),
+        }),
 
-    answer: z.string().optional(),
-  }).optional(),
+        type: PromptSchema.sourceType().shape.type.optional(),
+        answer: PromptSchema.sourceType().shape.answer.optional(),
+        answerKey: PromptSchema.sourceType().shape.answerKey.optional(),
+      })
+      .optional(),
   data: z.string().optional(),
 
   /**
-   * Score of the Response. Undefined if the Response is failed.
+   * Unique identifier of this Scoring result. This is named
+   * like this because `did` field represents the Response ID since
+   * the Score object inherits from the Response object.
    */
-  score: z.number().optional(),
+  scoreDID: DIDasUUIDSchema,
 
   /**
-   * Additional metadata
+   * Additional metadata about the Scoring result. This is named
+   * like this because `metadata` field represents the Response metadata since
+   * the Score object inherits from the Response object.
    */
-  metadata: z.record(z.string(), z.any()).default({}).optional(),
+  scoreMetadata: z.record(z.string(), z.any()).optional(),
+
+  score: z.number().min(0).max(1),
+  method: z.nativeEnum(ScoringMethods),
+
+  /**
+   * Explanation about how the score was calculated.
+   */
+  explanation: z.string().optional(),
+
+  // Only presented if the scoring method is `ai`
+  scorerAI: z
+    .object({
+      provider: z.string(),
+      modelName: z.string(),
+      modelHost: z.string(),
+      modelOwner: z.string(),
+      modelId: z.string(),
+
+      inputTokensUsed: z.number().optional(),
+      outputTokensUsed: z.number().optional(),
+      inputCost: z.string().optional(),
+      outputCost: z.string().optional(),
+    })
+    .optional(),
 });
 export type PromptScore = z.infer<typeof PromptScoreSchema>;
 
