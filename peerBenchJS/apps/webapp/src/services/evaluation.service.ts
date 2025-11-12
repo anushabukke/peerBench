@@ -6,7 +6,13 @@ import {
   promptsTable,
   promptSetsTable,
   forestaiProvidersTable,
+  userRoleOnPromptSetTable,
 } from "@/database/schema";
+import {
+  EvaluationSources,
+  FileTypes,
+  UserRoleOnPromptSet,
+} from "@/database/types";
 import { db } from "@/database/client";
 import {
   eq,
@@ -14,11 +20,12 @@ import {
   and,
   gte,
   lte,
-  count,
   getTableColumns,
   sql,
   isNull,
   or,
+  inArray,
+  count,
 } from "drizzle-orm";
 import {
   calculateCID,
@@ -27,17 +34,16 @@ import {
   NearAIProvider,
   OpenRouterProvider,
   PromptScoreSchema,
-  removeDIDPrefix,
   PromptType,
 } from "@peerbench/sdk";
 import { ForestAIAuditFileSchema } from "@/validation/forest-ai-audit-file";
 import { z } from "zod";
 import { v7 as uuidv7 } from "uuid";
-import { EvaluationSource } from "@/types/evaluation-source";
-import { FileType } from "@/types/file-type";
-import { PromptSetService } from "./promptset.service";
-import { Transaction } from "@/types/db";
+import { DbOptions, PaginationOptions, Transaction } from "@/types/db";
 import axios from "axios";
+import { withTxOrDb } from "@/database/helpers";
+import { paginateQuery } from "@/database/query";
+import { ADMIN_USER_ID } from "@/lib/constants";
 
 const GENERIC_LLM_PROTOCOL_ADDRESS =
   "0x2cf3a88a17fa5c5601de77b44f19a02e572c03af".toLowerCase();
@@ -77,38 +83,36 @@ export class EvaluationService {
       }
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const updateRecords = async (providerName: string, tx: Transaction) => {
       // Update the provider information for each test result that has been
       // associated with this provider ID
-      await tx
-        .update(testResultsTable)
-        .set({
-          provider: providerName,
-          updatedAt: new Date(),
-        })
-        .from(evaluationsTable)
-        .where(
-          and(
-            // Join the table based on `evaluationId` column
-            eq(testResultsTable.evaluationId, evaluationsTable.id),
-
-            // Only update the test results that exists in an evaluation that
-            // matches with this providerId
-            eq(evaluationsTable.providerId, providerId),
-
-            // Ensure that we are not doing anything related with peerBench
-            eq(evaluationsTable.source, "forestai")
-          )
-        );
-
-      // Update the provider name as well to keep the data aligned
-      await tx
-        .update(forestaiProvidersTable)
-        .set({
-          name: providerName,
-          updatedAt: new Date(),
-        })
-        .where(eq(forestaiProvidersTable.id, providerId));
+      // await tx
+      //   .update(testResultsTable)
+      //   .set({
+      //     provider: providerName,
+      //     updatedAt: new Date(),
+      //   })
+      //   .from(evaluationsTable)
+      //   .where(
+      //     and(
+      //       // Join the table based on `evaluationId` column
+      //       eq(testResultsTable.evaluationId, evaluationsTable.id),
+      //       // Only update the test results that exists in an evaluation that
+      //       // matches with this providerId
+      //       eq(evaluationsTable.providerId, providerId),
+      //       // Ensure that we are not doing anything related with peerBench
+      //       eq(evaluationsTable.source, "forestai")
+      //     )
+      //   );
+      // // Update the provider name as well to keep the data aligned
+      // await tx
+      //   .update(forestaiProvidersTable)
+      //   .set({
+      //     name: providerName,
+      //     updatedAt: new Date(),
+      //   })
+      //   .where(eq(forestaiProvidersTable.id, providerId));
     };
 
     const transaction = async (tx: Transaction) => {
@@ -175,57 +179,37 @@ export class EvaluationService {
 
         if (!validation.success) {
           throw new Error(
-            `Invalid validation result: ${validation.error.issues[0].path} ${validation.error.issues[0].message}`
+            `Invalid validation result: ${validation.error.issues[0]?.path} ${validation.error.issues[0]?.message}`
           );
         }
 
         // Save the file to the database
-        const [insertedFile] = await tx
+        const insertedFile = await tx
           .insert(filesTable)
           .values({
             cid: fileCID.toString(),
             sha256: fileSHA256,
             content: file.content,
             uploaderId: params.uploaderId,
-            type: FileType.Audit,
+            type: FileTypes.Audit,
           })
-          .returning({ id: filesTable.id });
+          .returning({ id: filesTable.id })
+          .then(([file]) => file!);
 
         for (const evaluation of validation.data) {
-          let promptSetId: number | undefined;
-          const runId = uuidv7();
-
-          // Try to find prompt set from the prompt
-          // All of the test results have the same prompt set id
+          // Try to find Prompt Set ID from the test results.
+          // All of the test results have the same Prompt Set ID,
           // at least we assume that the validator implemented in that way.
           // So we can pick one of the test results.
-          const promptId = evaluation.testResults[0]?.result?.promptId;
+          const promptSetId = evaluation.testResults[0]?.result?.promptSetId; // TODO: Forest AI Validators not implemented yet to include Prompt Set ID
+          const runId = uuidv7();
 
-          // If the prompt id is found, that means this evaluation
-          // comes from an LLM Protocol which uses peerBench prompt sets.
-          if (promptId) {
-            const [promptSet] = await tx
-              .select({
-                id: promptSetsTable.id,
-              })
-              .from(promptsTable)
-              .innerJoin(
-                promptSetsTable,
-                eq(promptsTable.promptSetId, promptSetsTable.id)
-              )
-              .where(eq(promptsTable.id, promptId));
-
-            if (promptSet) {
-              promptSetId = promptSet.id;
-            }
-          }
-
-          const [insertedEvaluation] = await tx
+          const insertedEvaluation = await tx
             .insert(evaluationsTable)
             .values({
               fileId: insertedFile.id,
               runId,
-              source: EvaluationSource.ForestAI,
+              source: EvaluationSources.ForestAI,
               commitHash: file.commitHash,
               finishedAt: evaluation.finishedAt,
               metadata: evaluation.metadata,
@@ -237,19 +221,20 @@ export class EvaluationService {
               agreementId: evaluation.agreementId,
               offerId: evaluation.offerId,
               providerId: evaluation.providerId,
-              protocolAddress: evaluation.protocol?.address,
+              protocolAddress: evaluation.protocol?.address?.toLowerCase(),
               protocolName: evaluation.protocol?.name,
 
               promptSetId,
             })
-            .returning();
+            .returning({ id: evaluationsTable.id })
+            .then(([evaluation]) => evaluation!);
 
           // Use the providerName if it is provided to keep backward compatibility
           // with the data that ForestAI daemons still have. Otherwise just fetch
           // the provider name from ForestAI indexer or use from what saved in the db.
-          const providerName =
-            evaluation.providerName ||
-            (await this.refreshProviderName(evaluation.providerId, { tx }));
+          // const providerName =
+          //   evaluation.providerName ||
+          //   (await this.refreshProviderName(evaluation.providerId, { tx }));
 
           for (const testResult of evaluation.testResults) {
             // Shared data for all Protocols
@@ -258,7 +243,7 @@ export class EvaluationService {
               startedAt: evaluation.startedAt,
               finishedAt: evaluation.finishedAt,
               score: testResult.isSuccess ? 1 : 0,
-              provider: providerName,
+              // provider: providerName!,
               raw: testResult.raw,
               testName: testResult.testName,
             };
@@ -302,24 +287,24 @@ export class EvaluationService {
                 !modelInfo &&
                 i < providers.length
               ) {
-                modelInfo = await providers[i].parseModelInfo(
+                modelInfo = await providers[i]!.parseModelInfo(
                   testResult.result.modelId
                 );
                 i++;
               }
 
               // If the model info is found then include the additional data there
-              if (modelInfo) {
-                dbTestResult.modelName = modelInfo.name;
-                dbTestResult.modelHost = modelInfo.host;
-                dbTestResult.modelOwner = modelInfo.owner;
-              } else {
-                // Otherwise just save the model id itself
-                dbTestResult.modelName = testResult.result.modelId;
-                dbTestResult.modelHost = testResult.result.modelId;
-                dbTestResult.modelOwner = testResult.result.modelId;
-                console.error("Unknown LLM model:", testResult.result.modelId);
-              }
+              // if (modelInfo) {
+              //   dbTestResult.modelName = modelInfo.name;
+              //   dbTestResult.modelHost = modelInfo.host;
+              //   dbTestResult.modelOwner = modelInfo.owner;
+              // } else {
+              //   // Otherwise just save the model id itself
+              //   dbTestResult.modelName = testResult.result.modelId;
+              //   dbTestResult.modelHost = testResult.result.modelId;
+              //   dbTestResult.modelOwner = testResult.result.modelId;
+              //   console.error("Unknown LLM model:", testResult.result.modelId);
+              // }
             } else {
               // If the protocol is not an LLM Protocol then we can save the result as is
               dbTestResult.result = testResult.result;
@@ -333,145 +318,18 @@ export class EvaluationService {
     });
   }
 
-  static async savePeerBenchScores(params: {
-    evaluationFileContent: string;
-    evaluationFileName: string;
-    uploaderId: string;
-    promptFileName?: string;
-    promptFileContent?: string;
-    promptSet?: {
-      id?: number;
-      title?: string;
-      description?: string;
-    };
-  }) {
-    return await db.transaction(async (tx) => {
-      let promptSetId = params.promptSet?.id;
-
-      // Create a prompt set if id is not given
-      if (!params.promptSet?.id) {
-        if (!params.promptSet?.title || !params.promptSet?.description) {
-          throw new Error(
-            "Prompt set title and description are required when creating a new prompt set"
-          );
-        }
-
-        const [promptSet] = await tx
-          .insert(promptSetsTable)
-          .values({
-            ownerId: params.uploaderId,
-            title: params.promptSet!.title!,
-            description: params.promptSet!.description!,
-          })
-          .returning();
-        promptSetId = promptSet.id;
+  static async getEvaluations(
+    options: DbOptions &
+      PaginationOptions & {
+        requestedByUserId?: string;
+        filters?: {
+          id?: number;
+          commitHash?: string;
+          cid?: string;
+        };
       }
-
-      if (params.promptFileContent) {
-        if (!promptSetId) {
-          throw new Error(
-            "Prompt set id is required when adding prompts to a prompt set"
-          );
-        }
-
-        await PromptSetService.addPromptsToPromptSet(
-          {
-            promptSetId,
-            fileContent: params.promptFileContent,
-            fileName: params.promptFileName,
-            uploaderId: params.uploaderId,
-          },
-          {
-            // Use the same transaction for adding prompts to the prompt set
-            tx,
-          }
-        );
-      }
-
-      // Parse score file content
-      const evaluationFileObject = JSON.parse(params.evaluationFileContent);
-      const validation = EvaluationFileSchema.safeParse(evaluationFileObject);
-
-      if (!validation.success) {
-        throw new Error(
-          `Invalid evaluation file content: ${validation.error.issues[0].path} ${validation.error.issues[0].message}`
-        );
-      }
-
-      const fileCID = (
-        await calculateCID(params.evaluationFileContent)
-      ).toString();
-      const fileSHA256 = await calculateSHA256(params.evaluationFileContent);
-
-      const [file] = await tx
-        .insert(filesTable)
-        .values({
-          cid: fileCID,
-          sha256: fileSHA256,
-          format: "json",
-          type: FileType.Evaluation,
-          name: params.evaluationFileName,
-          content: params.evaluationFileContent,
-          uploaderId: params.uploaderId,
-        })
-        .onConflictDoUpdate({
-          target: [filesTable.cid],
-          set: {
-            cid: fileCID,
-          },
-        })
-        .returning({ id: filesTable.id });
-
-      const [evaluation] = await tx
-        .insert(evaluationsTable)
-        .values({
-          fileId: file.id,
-          runId: validation.data.runId,
-          source: EvaluationSource.PeerBench,
-          finishedAt: new Date(validation.data.finishedAt),
-          score: validation.data.score,
-          startedAt: new Date(validation.data.startedAt),
-          promptSetId,
-        })
-        .returning({ id: evaluationsTable.id });
-
-      // Save scores
-      await tx.insert(testResultsTable).values(
-        validation.data.scores.map<DbTestResultInsert>((score) => ({
-          score: score.score,
-          evaluationId: evaluation.id,
-          provider: score.provider,
-          startedAt: new Date(score.startedAt),
-          finishedAt: score.finishedAt ? new Date(score.finishedAt) : null,
-
-          modelName: score.modelName,
-          modelHost: score.modelHost,
-          modelOwner: score.modelOwner,
-          modelId: score.modelId,
-          taskId: score.taskId,
-          response: score.data,
-          cid: score.cid,
-          sha256: score.sha256,
-          promptId: removeDIDPrefix(score.prompt!.did),
-          metadata: score.metadata,
-        }))
-      );
-
-      return {
-        evaluationId: evaluation.id,
-        count: validation.data.scores.length,
-      };
-    });
-  }
-
-  static async getEvaluations(filters?: {
-    id?: number;
-    commitHash?: string;
-    cid?: string;
-  }) {
-    const conditions = [];
-
-    const query = db
+  ) {
+    let query = db
       .select({
         ...getTableColumns(evaluationsTable),
         uploaderId: filesTable.uploaderId,
@@ -497,46 +355,145 @@ export class EvaluationService {
       )
       .orderBy(desc(evaluationsTable.finishedAt))
       .$dynamic();
+    let countQuery = db
+      .select({
+        count: count(),
+      })
+      .from(evaluationsTable)
+      .$dynamic();
 
-    if (filters?.commitHash) {
-      conditions.push(eq(evaluationsTable.commitHash, filters.commitHash));
+    const whereConditions = [];
+
+    if (
+      options?.requestedByUserId !== undefined &&
+      options.requestedByUserId !== ADMIN_USER_ID // ACL rules doesn't apply to admin user
+    ) {
+      query = query.leftJoin(
+        userRoleOnPromptSetTable,
+        and(
+          eq(
+            userRoleOnPromptSetTable.promptSetId,
+            evaluationsTable.promptSetId
+          ),
+          eq(
+            userRoleOnPromptSetTable.userId,
+            options?.requestedByUserId || sql`NULL`
+          )
+        )
+      );
+      countQuery = countQuery
+        .leftJoin(
+          promptSetsTable,
+          eq(evaluationsTable.promptSetId, promptSetsTable.id)
+        )
+        .leftJoin(
+          userRoleOnPromptSetTable,
+          and(
+            eq(
+              userRoleOnPromptSetTable.promptSetId,
+              evaluationsTable.promptSetId
+            ),
+            eq(
+              userRoleOnPromptSetTable.userId,
+              options?.requestedByUserId || sql`NULL`
+            )
+          )
+        );
+
+      whereConditions.push(
+        or(
+          // Forest AI data is always public
+          isNull(evaluationsTable.promptSetId),
+
+          // Otherwise Prompt Set access control rules apply
+          eq(promptSetsTable.isPublic, true),
+          inArray(userRoleOnPromptSetTable.role, [
+            UserRoleOnPromptSet.admin,
+            UserRoleOnPromptSet.owner,
+            UserRoleOnPromptSet.collaborator,
+            UserRoleOnPromptSet.reviewer,
+          ])
+        )
+      );
     }
 
-    if (filters?.cid) {
-      conditions.push(eq(filesTable.cid, filters.cid));
+    if (options?.filters?.commitHash) {
+      whereConditions.push(
+        eq(evaluationsTable.commitHash, options?.filters.commitHash)
+      );
     }
 
-    if (filters?.id) {
-      conditions.push(eq(evaluationsTable.id, filters.id));
+    if (options?.filters?.cid) {
+      countQuery = countQuery.leftJoin(
+        filesTable,
+        eq(evaluationsTable.fileId, filesTable.id)
+      );
+      whereConditions.push(eq(filesTable.cid, options?.filters.cid));
     }
 
-    return await query.where(and(...conditions));
+    if (options?.filters?.id) {
+      whereConditions.push(eq(evaluationsTable.id, options?.filters.id));
+    }
+
+    return await paginateQuery(
+      query.where(and(...whereConditions)),
+      countQuery.where(and(...whereConditions)),
+      {
+        page: options?.page,
+        pageSize: options?.pageSize,
+      }
+    );
   }
 
-  static async getEvaluationsListFilterValues(options?: { model?: string }) {
-    const { model } = options || {};
-    const conditions = [];
-
+  static async getEvaluationsListFilterValues(
+    options?: DbOptions & {
+      requestedByUserId?: string;
+      filters?: {
+        model?: string;
+      };
+    }
+  ) {
     let query = db
       .select({
-        promptSetTitle: promptSetsTable.title,
-        promptSetId: evaluationsTable.promptSetId,
-        provider: testResultsTable.provider,
-        protocolName: sql<string | null>`
-          CASE
-            WHEN ${isNull(evaluationsTable.promptSetId)}
-            THEN ${evaluationsTable.protocolName}
-            ELSE NULL
-          END
+        providers: sql<string[]>`
+          COALESCE(
+            '[]'::jsonb -- jsonb_agg(DISTINCT ${/* testResultsTable.provider */ null}),
+            '[]'::jsonb
+          )
         `,
-        protocolAddress: sql<string | null>`
-          CASE
-            WHEN ${isNull(evaluationsTable.promptSetId)}
-            THEN ${evaluationsTable.protocolAddress}
-            ELSE NULL
-          END
+        contexts: sql<
+          (
+            | { id: number; title: string; type: "prompt-set" }
+            | { name: string; address: string; type: "protocol" }
+          )[]
+        >`
+          COALESCE(
+            jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'id', ${promptSetsTable.id},
+                'title', ${promptSetsTable.title},
+                'type', 'prompt-set'
+              )
+            ) FILTER (WHERE ${promptSetsTable.id} IS NOT NULL),
+            '[]'::jsonb
+          ) ||
+          COALESCE(
+            jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'name', ${evaluationsTable.protocolName}, 
+                'address', ${evaluationsTable.protocolAddress},
+                'type', 'protocol'
+              )
+            ) FILTER (WHERE ${evaluationsTable.protocolName} IS NOT NULL),
+            '[]'::jsonb
+          )
         `,
-        promptType: promptsTable.type,
+        promptTypes: sql<string[]>`
+          COALESCE(
+            jsonb_agg(DISTINCT ${promptsTable.type}) FILTER (WHERE ${promptsTable.id} IS NOT NULL),
+            '[]'::jsonb
+          )
+        `,
       })
       .from(testResultsTable)
       .innerJoin(
@@ -548,258 +505,270 @@ export class EvaluationService {
         eq(evaluationsTable.promptSetId, promptSetsTable.id)
       )
       .leftJoin(promptsTable, eq(testResultsTable.promptId, promptsTable.id))
-      .groupBy(
-        promptSetsTable.title,
-        evaluationsTable.protocolName,
-        evaluationsTable.promptSetId,
-        evaluationsTable.protocolAddress,
-        testResultsTable.provider,
-        promptsTable.type
-      )
       .$dynamic();
+    const whereConditions = [];
 
-    if (model) {
-      conditions.push(
+    if (
+      options?.requestedByUserId !== undefined &&
+      options.requestedByUserId !== ADMIN_USER_ID // ACL rules doesn't apply to admin user
+    ) {
+      query = query.leftJoin(
+        userRoleOnPromptSetTable,
+        and(
+          eq(userRoleOnPromptSetTable.promptSetId, promptSetsTable.id),
+          eq(
+            userRoleOnPromptSetTable.userId,
+            options?.requestedByUserId || sql`NULL`
+          )
+        )
+      );
+
+      whereConditions.push(
         or(
-          eq(testResultsTable.modelName, model),
-          eq(testResultsTable.provider, model)
+          // Forest AI data is always public
+          isNull(evaluationsTable.promptSetId),
+
+          // Otherwise Prompt Set access control rules apply
+          eq(promptSetsTable.isPublic, true),
+          inArray(userRoleOnPromptSetTable.role, [
+            UserRoleOnPromptSet.admin,
+            UserRoleOnPromptSet.owner,
+            UserRoleOnPromptSet.collaborator,
+            UserRoleOnPromptSet.reviewer,
+          ])
         )
       );
     }
 
-    query = query.where(and(...conditions));
+    // if (options?.filters?.model) {
+    //   whereConditions.push(
+    //     or(
+    //       eq(testResultsTable.modelName, options?.filters?.model),
+    //       eq(testResultsTable.provider, options?.filters?.model)
+    //     )
+    //   );
+    // }
 
-    const results = await query;
-    const promptSets: Record<number, string> = {};
-    const protocols: Record<string, string> = {};
-    const providers = new Set<string>();
-    const promptTypes = new Set<string>();
-
-    for (const result of results) {
-      if (result.promptSetId && result.promptSetTitle) {
-        promptSets[result.promptSetId] = result.promptSetTitle;
-      }
-      if (result.protocolAddress && result.protocolName) {
-        protocols[result.protocolAddress] = result.protocolName;
-      }
-
-      providers.add(result.provider);
-      if (result.promptType) {
-        promptTypes.add(result.promptType);
-      }
-    }
-
-    return {
-      providers: Array.from(providers),
-      promptSets: Object.entries(promptSets).map(([id, title]) => ({
-        id: parseInt(id),
-        title,
-      })),
-      protocols: Object.entries(protocols).map(([address, name]) => ({
-        address,
-        name,
-      })),
-      promptTypes: Array.from(promptTypes).sort(),
-    };
+    const result = await query.where(and(...whereConditions));
+    return result[0]!;
   }
 
   static async getEvaluationsList(
-    options: {
-      page?: number;
-      pageSize?: number;
-      minScore?: number;
-      maxScore?: number;
-      model?: string;
-      provider?: string;
-      promptSetId?: number;
-      protocolAddress?: string;
-      protocolName?: string;
-      uploaderId?: string;
-      providerId?: number;
-      offerId?: number;
-      promptType?: string;
-    } = {}
+    options: DbOptions &
+      PaginationOptions & {
+        requestedByUserId?: string;
+        filters?: {
+          minScore?: number;
+          maxScore?: number;
+          model?: string;
+          provider?: string;
+          promptSetId?: number;
+          protocolAddress?: string;
+          protocolName?: string;
+          uploaderId?: string;
+          providerId?: number;
+          offerId?: number;
+          promptType?: string;
+        };
+      }
   ) {
-    const {
-      page = 1,
-      pageSize = 10,
-      minScore,
-      maxScore,
-      model,
-      promptSetId,
-      protocolAddress,
-      protocolName,
-      uploaderId,
-      providerId,
-      offerId,
-      provider,
-      promptType,
-    } = options;
-    const offset = (page - 1) * pageSize;
-    const conditions = [];
-
-    // Index of the evaluation in the same file
-    const evaluationFileIndexQuery = db
-      .select({
-        id: evaluationsTable.id,
-        index: sql<number>`
-          ROW_NUMBER() OVER (
-            PARTITION BY ${evaluationsTable.fileId}
-            ORDER BY ${evaluationsTable.startedAt} DESC
-          ) - 1`
-          .mapWith(Number)
-          .as("index"),
-      })
-      .from(evaluationsTable)
-      .as("evaluation_file_indexes");
-
-    let query = db
-      .select({
-        id: evaluationsTable.id,
-        score: evaluationsTable.score,
-        fileId: evaluationsTable.fileId,
-        fileCID: filesTable.cid,
-        source: evaluationsTable.source,
-        startedAt: evaluationsTable.startedAt,
-        finishedAt: evaluationsTable.finishedAt,
-        protocolName: evaluationsTable.protocolName,
-        providerId: evaluationsTable.providerId,
-        promptSetId: evaluationsTable.promptSetId,
-        promptSetTitle: promptSetsTable.title,
-        uploaderId: filesTable.uploaderId,
-        uploadedAt: filesTable.createdAt,
-        providers: sql<string[]>`
-          jsonb_agg(DISTINCT ${testResultsTable.provider})
-        `,
-        index: evaluationFileIndexQuery.index,
-      })
-      .from(evaluationsTable)
-      .innerJoin(filesTable, eq(evaluationsTable.fileId, filesTable.id))
-      .innerJoin(
-        evaluationFileIndexQuery,
-        eq(evaluationsTable.id, evaluationFileIndexQuery.id)
-      )
-      .leftJoin(
-        testResultsTable,
-        eq(evaluationsTable.id, testResultsTable.evaluationId)
-      )
-      .leftJoin(
-        promptSetsTable,
-        eq(evaluationsTable.promptSetId, promptSetsTable.id)
-      )
-      .orderBy(desc(evaluationsTable.finishedAt))
-      .limit(pageSize)
-      .offset(offset)
-      .groupBy(
-        evaluationsTable.id,
-        filesTable.id,
-        filesTable.cid,
-        promptSetsTable.title,
-        evaluationFileIndexQuery.index
-      )
-      .$dynamic();
-
-    let totalCountQuery = db
-      .select({
-        count: count(sql`DISTINCT ${evaluationsTable.id}`),
-      })
-      .from(evaluationsTable)
-      .$dynamic();
-
-    if (minScore !== undefined) {
-      conditions.push(gte(evaluationsTable.score, minScore));
-    }
-    if (maxScore !== undefined) {
-      conditions.push(lte(evaluationsTable.score, maxScore));
-    }
-    if (promptSetId !== undefined || model !== undefined) {
-      totalCountQuery = totalCountQuery.leftJoin(
-        testResultsTable,
-        eq(testResultsTable.evaluationId, evaluationsTable.id)
-      );
+    return withTxOrDb(async (tx) => {
+      let query = tx
+        .select({
+          id: evaluationsTable.id,
+          score: evaluationsTable.score,
+          fileId: evaluationsTable.fileId,
+          fileCID: filesTable.cid,
+          source: evaluationsTable.source,
+          startedAt: evaluationsTable.startedAt,
+          finishedAt: evaluationsTable.finishedAt,
+          protocolName: evaluationsTable.protocolName,
+          providerId: evaluationsTable.providerId,
+          promptSetId: evaluationsTable.promptSetId,
+          promptSetTitle: promptSetsTable.title,
+          uploaderId: filesTable.uploaderId,
+          uploadedAt: filesTable.createdAt,
+          providers: sql<string[]>`
+            COALESCE(
+              '[]'::jsonb, -- jsonb_agg(DISTINCT ${/* testResultsTable.provider */ null}),
+              '[]'::jsonb
+            )
+          `,
+        })
+        .from(evaluationsTable)
+        .innerJoin(filesTable, eq(evaluationsTable.fileId, filesTable.id))
+        .leftJoin(
+          testResultsTable,
+          eq(evaluationsTable.id, testResultsTable.evaluationId)
+        )
+        .leftJoin(
+          promptSetsTable,
+          eq(evaluationsTable.promptSetId, promptSetsTable.id)
+        )
+        .orderBy(desc(evaluationsTable.finishedAt))
+        .groupBy(
+          evaluationsTable.id,
+          filesTable.id,
+          filesTable.cid,
+          promptSetsTable.title
+        )
+        .$dynamic();
+      let countQuery = tx
+        .select({
+          count: sql<number>`COUNT(DISTINCT ${evaluationsTable.id})`.mapWith(
+            Number
+          ),
+        })
+        .from(evaluationsTable)
+        .$dynamic();
+      const whereConditions = [];
 
       if (
-        promptSetId !== undefined &&
-        promptSetId !== null &&
-        !isNaN(promptSetId)
+        options?.requestedByUserId !== undefined &&
+        options.requestedByUserId !== ADMIN_USER_ID // ACL rules doesn't apply to admin user
       ) {
-        conditions.push(eq(evaluationsTable.promptSetId, promptSetId));
-      }
-      if (model !== undefined) {
-        conditions.push(
+        const condition = and(
+          eq(userRoleOnPromptSetTable.promptSetId, promptSetsTable.id),
+          eq(
+            userRoleOnPromptSetTable.userId,
+            options?.requestedByUserId || sql`NULL`
+          )
+        );
+        query = query.leftJoin(userRoleOnPromptSetTable, condition);
+        countQuery = countQuery
+          .leftJoin(
+            promptSetsTable,
+            eq(evaluationsTable.promptSetId, promptSetsTable.id)
+          )
+          .leftJoin(userRoleOnPromptSetTable, condition);
+
+        whereConditions.push(
           or(
-            eq(testResultsTable.modelName, model),
-            eq(testResultsTable.provider, model)
+            // Forest AI data is always public
+            isNull(evaluationsTable.promptSetId),
+
+            // Otherwise Prompt Set access control rules apply
+            eq(promptSetsTable.isPublic, true),
+            inArray(userRoleOnPromptSetTable.role, [
+              UserRoleOnPromptSet.admin,
+              UserRoleOnPromptSet.owner,
+              UserRoleOnPromptSet.collaborator,
+              UserRoleOnPromptSet.reviewer,
+            ])
           )
         );
       }
-      if (provider !== undefined) {
-        conditions.push(eq(testResultsTable.provider, provider));
-      }
-    }
-    if (promptType !== undefined) {
-      totalCountQuery = totalCountQuery.leftJoin(
-        promptsTable,
-        eq(testResultsTable.promptId, promptsTable.id)
-      );
-      query = query.leftJoin(
-        promptsTable,
-        eq(testResultsTable.promptId, promptsTable.id)
-      );
-      if (promptType !== undefined) {
-        conditions.push(
-          eq(sql`${promptsTable.type}`, promptType as PromptType)
+
+      if (options?.filters?.minScore !== undefined) {
+        whereConditions.push(
+          gte(evaluationsTable.score, options?.filters?.minScore)
         );
       }
-    }
-    if (uploaderId !== undefined) {
-      conditions.push(eq(filesTable.uploaderId, uploaderId));
-    }
-    if (providerId !== undefined) {
-      conditions.push(eq(evaluationsTable.providerId, providerId));
-    }
-    if (offerId !== undefined) {
-      conditions.push(eq(evaluationsTable.offerId, offerId));
-    }
-    if (protocolAddress !== undefined) {
-      conditions.push(
-        eq(
-          sql`LOWER(${evaluationsTable.protocolAddress})`,
-          protocolAddress.toLowerCase()
-        )
+      if (options?.filters?.maxScore !== undefined) {
+        whereConditions.push(
+          lte(evaluationsTable.score, options?.filters?.maxScore)
+        );
+      }
+      if (
+        options?.filters?.promptSetId !== undefined ||
+        options?.filters?.model !== undefined
+      ) {
+        countQuery = countQuery.leftJoin(
+          testResultsTable,
+          eq(testResultsTable.evaluationId, evaluationsTable.id)
+        );
+
+        if (
+          options?.filters?.promptSetId !== undefined &&
+          options?.filters?.promptSetId !== null &&
+          !isNaN(options?.filters?.promptSetId)
+        ) {
+          whereConditions.push(
+            eq(evaluationsTable.promptSetId, options?.filters?.promptSetId)
+          );
+        }
+        // if (options?.filters?.model !== undefined) {
+        //   whereConditions.push(
+        //     or(
+        //       eq(testResultsTable.modelName, options?.filters?.model),
+        //       eq(testResultsTable.provider, options?.filters?.model)
+        //     )
+        //   );
+        // }
+        // if (options?.filters?.provider !== undefined) {
+        //   whereConditions.push(
+        //     eq(testResultsTable.provider, options?.filters?.provider)
+        //   );
+        // }
+      }
+      if (options?.filters?.promptType !== undefined) {
+        countQuery = countQuery.leftJoin(
+          promptsTable,
+          eq(testResultsTable.promptId, promptsTable.id)
+        );
+        query = query.leftJoin(
+          promptsTable,
+          eq(testResultsTable.promptId, promptsTable.id)
+        );
+        if (options?.filters?.promptType !== undefined) {
+          whereConditions.push(
+            eq(
+              sql`${promptsTable.type}`,
+              options?.filters?.promptType as PromptType
+            )
+          );
+        }
+      }
+      if (options?.filters?.uploaderId !== undefined) {
+        whereConditions.push(
+          eq(filesTable.uploaderId, options?.filters?.uploaderId)
+        );
+      }
+      if (options?.filters?.providerId !== undefined) {
+        whereConditions.push(
+          eq(evaluationsTable.providerId, options?.filters?.providerId)
+        );
+      }
+      if (options?.filters?.offerId !== undefined) {
+        whereConditions.push(
+          eq(evaluationsTable.offerId, options?.filters?.offerId)
+        );
+      }
+      if (options?.filters?.protocolAddress !== undefined) {
+        whereConditions.push(
+          eq(
+            evaluationsTable.protocolAddress,
+            options?.filters?.protocolAddress.toLowerCase()
+          )
+        );
+      }
+      if (options?.filters?.protocolName !== undefined) {
+        whereConditions.push(
+          eq(evaluationsTable.protocolName, options?.filters?.protocolName)
+        );
+      }
+
+      return await paginateQuery(
+        query.where(and(...whereConditions)),
+        countQuery.where(and(...whereConditions)),
+        {
+          page: options?.page,
+          pageSize: options?.pageSize,
+        }
       );
-    }
-    if (protocolName !== undefined) {
-      conditions.push(eq(evaluationsTable.protocolName, protocolName));
-    }
-
-    query = query.where(and(...conditions));
-    totalCountQuery = totalCountQuery.where(and(...conditions));
-
-    const results = await query;
-    const totalCount = (await totalCountQuery)[0].count;
-
-    return {
-      results,
-      total: totalCount,
-    };
+    }, options?.tx);
   }
 }
 
-export type EvaluationData = Awaited<
+export type EvaluationItem = Awaited<
   ReturnType<(typeof EvaluationService)["getEvaluations"]>
->[number];
+>["data"][number];
 
 export type EvaluationListItem = Awaited<
   ReturnType<(typeof EvaluationService)["getEvaluationsList"]>
->["results"][number];
+>["data"][number];
 
-export type SavePeerBenchResultsParams = Parameters<
-  (typeof EvaluationService)["savePeerBenchScores"]
->[0];
-
-export const BenchmarkScoreSchema = PromptScoreSchema.extend({
-  score: z.number(),
+export const ModelResponseSchema = PromptScoreSchema.extend({
   data: z.string(),
   cid: z.string(),
   sha256: z.string(),
@@ -807,20 +776,30 @@ export const BenchmarkScoreSchema = PromptScoreSchema.extend({
   prompt: z.object({
     did: z.string(),
   }),
+
+  // Score can be uploaded later
+  score: PromptScoreSchema.shape.score.optional(),
+
+  // Those fields are not required because in the webapp context, we already have them.
+  runId: z.undefined(),
+  taskId: z.undefined(),
+  sourceTaskFile: z.undefined(),
 });
 
 /**
  * Evaluation file generated by the peerBench benchmark
  */
-export const EvaluationFileSchema = z.object({
-  runId: z.string(),
-  source: z.nativeEnum(EvaluationSource),
-  startedAt: z.number(),
-  finishedAt: z.number(),
-  score: z.number(),
-  scores: z.array(BenchmarkScoreSchema),
-});
+export const EvaluationFileSchema = z.object(
+  {
+    runId: z.string(),
+    startedAt: z.number(),
+    finishedAt: z.number(),
+    score: z.number().optional(),
+    responses: z.array(ModelResponseSchema),
+  },
+  { message: "Invalid evaluation file" }
+);
 
 export type EvaluationFile = z.infer<typeof EvaluationFileSchema>;
 
-export type BenchmarkScore = z.infer<typeof BenchmarkScoreSchema>;
+export type ModelResponse = z.infer<typeof ModelResponseSchema>;

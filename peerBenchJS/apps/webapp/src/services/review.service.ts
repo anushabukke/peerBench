@@ -1,13 +1,14 @@
 import { db } from "@/database/client";
+import { withTxOrDb, withTxOrTx } from "@/database/helpers";
 import {
-  DbReviewFlagInsert,
-  reviewFlagsTable,
+  DbQuickFeedbackFlagInsert,
+  quickFeedbackFlagsTable,
   promptReviewsReviewFlagsTable,
   promptReviewsTable,
   testResultReviewsReviewFlagsTable,
   testResultReviewsTable,
 } from "@/database/schema";
-import { Transaction } from "@/types/db";
+import { DbOptions, Transaction } from "@/types/db";
 import { ReviewOpinion } from "@/types/review";
 import {
   and,
@@ -22,9 +23,7 @@ import {
 export class ReviewService {
   static async insertFlags(
     flags: { value: string; opinion: ReviewOpinion }[],
-    options?: {
-      tx?: Transaction;
-    }
+    options?: DbOptions
   ) {
     if (flags.length === 0) return [];
 
@@ -35,23 +34,25 @@ export class ReviewService {
       );
 
     // Insert new flags flags
-    return await (options?.tx ?? db)
-      .insert(reviewFlagsTable)
-      .values(
-        flags.map<DbReviewFlagInsert>((flag) => ({
-          flag: replaceFlagValue(flag.value),
-          opinion: flag.opinion,
-        }))
-      )
-      .onConflictDoUpdate({
-        target: [reviewFlagsTable.flag],
-        set: {
-          // Hacky update of the id. We are doing that because we want to return
-          // the flags that are inserted whether they were already present in the database or not.
-          id: sql`excluded.id`,
-        },
-      })
-      .returning();
+    return withTxOrDb(async (tx) => {
+      return tx
+        .insert(quickFeedbackFlagsTable)
+        .values(
+          flags.map<DbQuickFeedbackFlagInsert>((flag) => ({
+            flag: replaceFlagValue(flag.value),
+            opinion: flag.opinion,
+          }))
+        )
+        .onConflictDoUpdate({
+          target: [quickFeedbackFlagsTable.flag],
+          set: {
+            // Hacky update of the id. We are doing that because we want to return
+            // the flags that are inserted whether they were already present in the database or not.
+            id: sql`excluded.id`,
+          },
+        })
+        .returning();
+    }, options?.tx);
   }
 
   static async getFlags(options?: {
@@ -63,42 +64,45 @@ export class ReviewService {
     if (options?.search) {
       conditions.push(
         ilike(
-          sql`LOWER(${reviewFlagsTable.flag})`,
+          sql`LOWER(${quickFeedbackFlagsTable.flag})`,
           `%${options.search.toLowerCase()}%`
         )
       );
     }
 
     if (options?.opinion) {
-      conditions.push(eq(reviewFlagsTable.opinion, options.opinion));
+      conditions.push(eq(quickFeedbackFlagsTable.opinion, options.opinion));
     }
 
     return await db
       .select({
-        id: reviewFlagsTable.id,
-        value: reviewFlagsTable.flag,
-        opinion: reviewFlagsTable.opinion,
+        id: quickFeedbackFlagsTable.id,
+        value: quickFeedbackFlagsTable.flag,
+        opinion: quickFeedbackFlagsTable.opinion,
       })
-      .from(reviewFlagsTable)
+      .from(quickFeedbackFlagsTable)
       .where(and(...conditions));
   }
 
-  static async saveReview(data: {
-    testResultId?: number;
-    promptId?: string;
-    property?: string;
+  static async saveReview(
+    data: {
+      testResultId?: number;
+      promptId?: string;
+      property?: string;
 
-    comment: string;
-    flags: { value: string; opinion: ReviewOpinion }[];
-    userId: string;
-    opinion: ReviewOpinion;
-  }) {
-    return await db.transaction(async (tx) => {
+      comment: string;
+      flags: { value: string; opinion: ReviewOpinion }[];
+      userId: string;
+      opinion: ReviewOpinion;
+    },
+    options?: DbOptions
+  ) {
+    return await withTxOrTx(async (tx) => {
       // Insert new flags
       const flags = await this.insertFlags(data.flags, { tx });
 
       if (data.promptId !== undefined) {
-        const [promptReview] = await tx
+        const promptReview = await tx
           .insert(promptReviewsTable)
           .values({
             userId: data.userId,
@@ -106,7 +110,8 @@ export class ReviewService {
             comment: data.comment,
             promptId: data.promptId,
           })
-          .returning();
+          .returning()
+          .then(([review]) => review!);
 
         // Insert flags relations for the review
         if (flags.length > 0) {
@@ -125,7 +130,7 @@ export class ReviewService {
       }
 
       if (data.testResultId !== undefined) {
-        const [testResultReview] = await tx
+        const testResultReview = await tx
           .insert(testResultReviewsTable)
           .values({
             userId: data.userId,
@@ -134,7 +139,8 @@ export class ReviewService {
             testResultId: data.testResultId,
             property: data.property,
           })
-          .returning();
+          .returning()
+          .then(([review]) => review!);
 
         // Insert flags relations for the review
         if (flags.length > 0) {
@@ -153,7 +159,7 @@ export class ReviewService {
       }
 
       throw new Error("No test result or prompt ID provided");
-    });
+    }, options?.tx);
   }
 
   // Helper method for `updateReview`
@@ -165,12 +171,15 @@ export class ReviewService {
     if (isTestResult) {
       return await tx
         .select({
-          ...getTableColumns(reviewFlagsTable),
+          ...getTableColumns(quickFeedbackFlagsTable),
         })
         .from(testResultReviewsReviewFlagsTable)
         .innerJoin(
-          reviewFlagsTable,
-          eq(testResultReviewsReviewFlagsTable.flagId, reviewFlagsTable.id)
+          quickFeedbackFlagsTable,
+          eq(
+            testResultReviewsReviewFlagsTable.flagId,
+            quickFeedbackFlagsTable.id
+          )
         )
         .where(
           eq(testResultReviewsReviewFlagsTable.testResultReviewId, reviewId)
@@ -178,12 +187,12 @@ export class ReviewService {
     } else {
       return await tx
         .select({
-          ...getTableColumns(reviewFlagsTable),
+          ...getTableColumns(quickFeedbackFlagsTable),
         })
         .from(promptReviewsReviewFlagsTable)
         .innerJoin(
-          reviewFlagsTable,
-          eq(promptReviewsReviewFlagsTable.flagId, reviewFlagsTable.id)
+          quickFeedbackFlagsTable,
+          eq(promptReviewsReviewFlagsTable.flagId, quickFeedbackFlagsTable.id)
         )
         .where(eq(promptReviewsReviewFlagsTable.promptReviewId, reviewId));
     }
@@ -344,14 +353,104 @@ export class ReviewService {
     });
   }
 
-  private static get flagsAggregation() {
+  /**
+   * Aggregation SQL statement for grouping review
+   * flags into an array of objects.
+   */
+  static get flagsAggregation() {
     return sql<{ id: number; flag: string; opinion: ReviewOpinion }[]>`
     COALESCE(JSONB_AGG(JSONB_BUILD_OBJECT(
-      'id', ${reviewFlagsTable.id},
-      'flag', ${reviewFlagsTable.flag},
-      'opinion', ${reviewFlagsTable.opinion}
-    )) FILTER (WHERE ${isNotNull(reviewFlagsTable.flag)}), '[]'::jsonb)
+      'id', ${quickFeedbackFlagsTable.id},
+      'flag', ${quickFeedbackFlagsTable.flag},
+      'opinion', ${quickFeedbackFlagsTable.opinion}
+    )) FILTER (WHERE ${isNotNull(quickFeedbackFlagsTable.flag)}), '[]'::jsonb)
   `;
+  }
+
+  /**
+   * Prepares a subquery where the Prompt reviews and review
+   * flags are aggregated. You can use either `promptId` or
+   * `userId` to join this subquery into your query.
+   */
+  static promptReviewsSubQuery(
+    options: DbOptions<true> & { subQueryName?: string }
+  ) {
+    return options.tx.$with(options.subQueryName || "sq_prompt_reviews").as(
+      options.tx
+        .select({
+          id: promptReviewsTable.id,
+          opinion: promptReviewsTable.opinion,
+          comment: promptReviewsTable.comment,
+          createdAt: promptReviewsTable.createdAt,
+          flags: ReviewService.flagsAggregation.as("prompt_review_flags"),
+          userId: promptReviewsTable.userId,
+          promptId: promptReviewsTable.promptId,
+        })
+        .from(promptReviewsTable)
+        .leftJoin(
+          promptReviewsReviewFlagsTable,
+          eq(
+            promptReviewsTable.id,
+            promptReviewsReviewFlagsTable.promptReviewId
+          )
+        )
+        .leftJoin(
+          quickFeedbackFlagsTable,
+          eq(promptReviewsReviewFlagsTable.flagId, quickFeedbackFlagsTable.id)
+        )
+        .groupBy(
+          promptReviewsTable.id,
+          promptReviewsTable.userId,
+          promptReviewsTable.promptId
+        )
+    );
+  }
+
+  /**
+   * Prepares a subquery where all the test result review information and
+   * also the flags aggregation has been already made. You can use either
+   * `testResultId` or `userId` to join this subquery into your query.
+   */
+  static testResultReviewsSubQuery(
+    options: DbOptions<true> & { subQueryName?: string }
+  ) {
+    return options.tx
+      .$with(options.subQueryName || "sq_test_result_reviews")
+      .as(
+        options.tx
+          .select({
+            id: testResultReviewsTable.id,
+            opinion: testResultReviewsTable.opinion,
+            comment: testResultReviewsTable.comment,
+            property: testResultReviewsTable.property,
+            createdAt: testResultReviewsTable.createdAt,
+            flags: ReviewService.flagsAggregation.as(
+              "test_result_review_flags"
+            ),
+            userId: testResultReviewsTable.userId,
+            testResultId: testResultReviewsTable.testResultId,
+          })
+          .from(testResultReviewsTable)
+          .leftJoin(
+            testResultReviewsReviewFlagsTable,
+            eq(
+              testResultReviewsTable.id,
+              testResultReviewsReviewFlagsTable.testResultReviewId
+            )
+          )
+          .leftJoin(
+            quickFeedbackFlagsTable,
+            eq(
+              testResultReviewsReviewFlagsTable.flagId,
+              quickFeedbackFlagsTable.id
+            )
+          )
+          .groupBy(
+            testResultReviewsTable.id,
+            testResultReviewsTable.userId,
+            testResultReviewsTable.testResultId
+          )
+      );
   }
 
   static async getTestResultReviews(options: {
@@ -399,8 +498,8 @@ export class ReviewService {
         )
       )
       .leftJoin(
-        reviewFlagsTable,
-        eq(testResultReviewsReviewFlagsTable.flagId, reviewFlagsTable.id)
+        quickFeedbackFlagsTable,
+        eq(testResultReviewsReviewFlagsTable.flagId, quickFeedbackFlagsTable.id)
       )
       .groupBy(testResultReviewsTable.id)
       .where(and(...testResultReviewsConditions));
@@ -437,8 +536,8 @@ export class ReviewService {
         eq(promptReviewsTable.id, promptReviewsReviewFlagsTable.promptReviewId)
       )
       .leftJoin(
-        reviewFlagsTable,
-        eq(promptReviewsReviewFlagsTable.flagId, reviewFlagsTable.id)
+        quickFeedbackFlagsTable,
+        eq(promptReviewsReviewFlagsTable.flagId, quickFeedbackFlagsTable.id)
       )
       .groupBy(promptReviewsTable.id)
       .where(and(...promptReviewsConditions));
@@ -479,3 +578,11 @@ export type UpdateReviewParams = Parameters<
 export type GetReviewsParams = Parameters<typeof ReviewService.getReviews>[0];
 
 export type GetFlagsParams = Parameters<typeof ReviewService.getFlags>[0];
+
+export type SaveReviewReturnType = Awaited<
+  ReturnType<typeof ReviewService.saveReview>
+>;
+
+export type UpdateReviewReturnType = Awaited<
+  ReturnType<typeof ReviewService.updateReview>
+>;

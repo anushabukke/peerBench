@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ValidatorLeaderboard } from "@/services/stats.service";
 import { Shield, FileText, Star, Activity } from "lucide-react";
 // import { DateTime } from "luxon";
-import { formatNumber } from "@/utils/supabase/format-number";
+import { formatNumber } from "@/utils/format-number";
 
 interface ValidatorLeaderboardStatsProps {
   leaderboard: ValidatorLeaderboard;

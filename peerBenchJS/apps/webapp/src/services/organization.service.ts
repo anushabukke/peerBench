@@ -1,5 +1,5 @@
 import { db } from "@/database/client";
-import { eq } from "drizzle-orm";
+import { eq, or, sql } from "drizzle-orm";
 import { orgDomainsTable, orgsTable } from "@/database/schema";
 
 export interface Organization {
@@ -30,11 +30,13 @@ export class OrganizationService {
       if (!domain) {
         return {
           found: false,
-          message: "Invalid email format"
+          message: "Invalid email format",
         };
       }
 
       // Query organization using Drizzle
+      // Supports both exact match and subdomain match
+      // e.g., "mit.edu" matches "mit.edu" AND "csail.mit.edu" matches "mit.edu"
       const orgDomain = await db
         .select({
           domain: orgDomainsTable.domain,
@@ -48,22 +50,26 @@ export class OrganizationService {
         })
         .from(orgDomainsTable)
         .innerJoin(orgsTable, eq(orgDomainsTable.orgId, orgsTable.id))
-        .where(eq(orgDomainsTable.domain, domain))
+        .where(
+          or(
+            eq(orgDomainsTable.domain, domain),
+            sql`${domain} LIKE '%.' || ${orgDomainsTable.domain}`
+          )
+        )
         .limit(1);
 
       if (orgDomain.length === 0) {
         return {
           found: false,
-          message: "No organization found for this email domain"
+          message: "No organization found for this email domain",
         };
       }
 
       return {
         found: true,
-        organization: orgDomain[0].org,
-        domain: orgDomain[0].domain
+        organization: orgDomain[0]!.org,
+        domain: orgDomain[0]!.domain,
       };
-
     } catch (error) {
       console.error("Error looking up organization:", error);
       throw new Error("Failed to lookup organization");

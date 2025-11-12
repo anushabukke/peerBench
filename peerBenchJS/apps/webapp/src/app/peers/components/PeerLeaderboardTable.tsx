@@ -2,7 +2,7 @@ import { PeerLeaderboardItem } from "@/services/stats.service";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Trophy, MessageSquare } from "lucide-react";
 import * as motion from "motion/react-client";
-import { formatNumber } from "@/utils/supabase/format-number";
+import { formatNumber } from "@/utils/format-number";
 
 const getRankIcon = (index: number) => {
   if (index === 0) return <Trophy className="w-5 h-5 text-yellow-500" />;

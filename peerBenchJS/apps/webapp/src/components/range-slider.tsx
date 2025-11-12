@@ -6,8 +6,8 @@ interface RangeSliderProps {
   min: number;
   max: number;
   step?: number;
-  values: [number, number];
-  onChange: (values: [number, number]) => void;
+  values: [number, number] | readonly [number, number];
+  onChange?: (values: [number, number]) => void;
   formatValue?: (value: number) => string;
   className?: string;
   disabled?: boolean;
@@ -42,7 +42,7 @@ export function RangeSlider({
       }
 
       setLocalValues(newValues);
-      onChange(newValues);
+      onChange?.(newValues);
     },
     [localValues, onChange]
   );
@@ -54,20 +54,20 @@ export function RangeSlider({
   return (
     <div className={`w-full ${className}`}>
       <div className="flex justify-between mb-2">
-        <span className="text-md text-gray-600 dark:text-gray-400">
+        <span className="text-md text-muted-foreground">
           {formatValue(localValues[0])}
         </span>
-        <span className="text-md text-gray-600 dark:text-gray-400">
+        <span className="text-md text-muted-foreground">
           {formatValue(localValues[1])}
         </span>
       </div>
       <div className="relative h-2">
         {/* Background track */}
-        <div className="absolute h-1 w-full rounded-full bg-gray-300 dark:bg-gray-600" />
+        <div className="absolute h-1 w-full rounded-full bg-secondary" />
 
         {/* Progress track */}
         <div
-          className="absolute h-[6px] rounded-full bg-indigo-600"
+          className="absolute h-[6px] rounded-full bg-primary"
           style={{
             left: `${progressLeft}%`,
             width: `${progressWidth}%`,
@@ -83,7 +83,7 @@ export function RangeSlider({
           disabled={disabled}
           value={localValues[0]}
           onChange={(e) => handleChange(0, Number(e.target.value))}
-          className="absolute h-2 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-indigo-600 [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-indigo-600 [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:cursor-pointer"
+          className="absolute h-2 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-background [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:cursor-pointer"
         />
 
         {/* Max thumb */}
@@ -95,7 +95,7 @@ export function RangeSlider({
           disabled={disabled}
           value={localValues[1]}
           onChange={(e) => handleChange(1, Number(e.target.value))}
-          className="absolute h-2 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-indigo-600 [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-white [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-indigo-600 [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:cursor-pointer"
+          className="absolute h-2 w-full appearance-none bg-transparent pointer-events-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-background [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:cursor-pointer [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-background [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-primary [&::-moz-range-thumb]:shadow-md [&::-moz-range-thumb]:pointer-events-auto [&::-moz-range-thumb]:cursor-pointer"
         />
       </div>
     </div>

@@ -3,8 +3,8 @@
 import { ChevronDown } from "lucide-react";
 import { DateTime } from "luxon";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { cn } from "@/lib/utils";
-import { EvaluationData } from "@/services/evaluation.service";
+import { cn } from "@/utils/cn";
+import { EvaluationItem as EvaluationItemType } from "@/services/evaluation.service";
 import { getTestResults } from "@/lib/actions/get-test-results";
 import { Pagination } from "@/components/pagination";
 import TestResult from "@/components/test-result";
@@ -32,17 +32,18 @@ export default function EvaluationItem({
   evaluationIndex,
   user,
 }: {
-  evaluation: EvaluationData;
+  evaluation: EvaluationItemType;
   evaluationIndex: number;
   user: User | null;
 }) {
   const searchParams = useSearchParams();
+
   const router = useRouter();
   const pathname = usePathname();
   const isFilterParamsPresent = useMemo(() => {
-    return searchParams
-      .entries()
-      .some(([key]) => key.startsWith(`evaluation-${evaluationIndex + 1}-`));
+    return Array.from(searchParams.entries()).some(([key]) =>
+      key.startsWith(`evaluation-${evaluationIndex + 1}-`)
+    );
   }, [searchParams, evaluationIndex]);
   const [isTestResultsLoading, startLoadingTestResults] = useTransition();
   const [isExpanded, setIsExpanded] = useState(isFilterParamsPresent);
@@ -128,7 +129,7 @@ export default function EvaluationItem({
       });
 
       setTestResults(results.data);
-      setTotalTestResultCount(results.pagination.totalRecords);
+      setTotalTestResultCount(results.totalCount);
     });
   };
 
@@ -288,14 +289,14 @@ export default function EvaluationItem({
           </h3>
           <div className="space-y-4">
             <EvaluationProperty
-              label="Prompt Set"
+              label="Benchmark"
               property={evaluation.promptSetId}
               formattedProperty={formattedProperties.promptSet}
             />
             <EvaluationProperty
               label="Score"
               property={evaluation.score}
-              formattedProperty={evaluation.score.toString()}
+              formattedProperty={evaluation.score?.toString()}
             />
             <EvaluationProperty
               label="Started At"

@@ -1,0 +1,1 @@
+ALTER TABLE "comments" ADD CONSTRAINT "comments_top_level_comment_id_comments_id_fk" FOREIGN KEY ("top_level_comment_id") REFERENCES "public"."comments"("id") ON DELETE no action ON UPDATE no action;

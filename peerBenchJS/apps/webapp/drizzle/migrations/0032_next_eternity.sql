@@ -1,0 +1,1 @@
+ALTER TABLE "user_role_on_prompt_set" ALTER COLUMN "role" DROP NOT NULL;

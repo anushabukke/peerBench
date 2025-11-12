@@ -1,88 +1,46 @@
-"use client";
+import { getUser } from "@/lib/actions/auth";
+import { LeaderboardTable } from "./components/leaderboard-table";
+import { LeaderboardService } from "@/services/leaderboard.service";
+import { NULL_UUID } from "@/lib/constants";
 
-import { useEffect, useState } from "react";
-import { LeaderboardTable } from "./components/LeaderboardTable";
-import { usePreloader } from "@/hooks/usePreloader";
-import LoadingSpinner from "@/components/loading-spinner";
+export default async function LeaderboardPage() {
+  // const { leaderboards, status, error } = useSelector(
+  //   (state: RootState) => state.leaderboardSlice
+  // );
 
-export default function LeaderboardPage() {
-  const { getCachedData, isDataAvailable, isPreloading } = usePreloader();
-  const [leaderboards, setLeaderboards] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // if (status === "loading") {
+  //   return <LoadingPage />;
+  // }
 
-  useEffect(() => {
-    const loadData = async () => {
-      // Try to get cached data first
-      const cachedLeaderboards = getCachedData("leaderboard");
-      if (cachedLeaderboards) {
-        // Convert string dates to Date objects for cached data too
-        const processedCachedData = cachedLeaderboards.map(
-          (leaderboard: any) => ({
-            ...leaderboard,
-            entries: leaderboard.entries.map((entry: any) => ({
-              ...entry,
-              recentEvaluation: new Date(entry.recentEvaluation),
-            })),
-          })
-        );
-        setLeaderboards(processedCachedData);
-        setIsLoading(false);
-        return;
-      }
+  // if (status === "failed") {
+  //   toast.error(error);
+  //   return (<div>Error: {error}</div> *link go back*)
+  // }
 
-      // If no cached data, fetch fresh data
-      if (!isDataAvailable("leaderboard") && !isPreloading) {
-        try {
-          const response = await fetch("/api/v1/leaderboard");
-          if (response.ok) {
-            const data = await response.json();
-            // Convert string dates to Date objects
-            const processedData = data.map((leaderboard: any) => ({
-              ...leaderboard,
-              entries: leaderboard.entries.map((entry: any) => ({
-                ...entry,
-                recentEvaluation: new Date(entry.recentEvaluation),
-              })),
-            }));
-            setLeaderboards(processedData);
-          } else {
-            console.error("Failed to fetch leaderboard data");
-          }
-        } catch (error) {
-          console.error("Error loading leaderboard data:", error);
-        } finally {
-          setIsLoading(false);
-        }
-      }
-    };
+  const user = await getUser();
 
-    loadData();
-  }, [getCachedData, isDataAvailable, isPreloading]);
+  // Fetch data directly on the server
+  const leaderboards = await LeaderboardService.getLeaderboards({
+    requestedByUserId: user?.id ?? NULL_UUID,
+  });
 
-  if (isLoading || isPreloading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <LoadingSpinner position="block" />
-      </div>
-    );
-  }
   if (leaderboards.length === 0) {
     return (
-      <div className="text-center text-gray-500 dark:text-gray-400 py-4">
+      <div className="w-full text-2xl text-center text-gray-500 dark:text-gray-400 py-4">
         No leaderboards available.
       </div>
     );
   }
 
-  // The leaderboard that has the most recent test evaluation, will be at the top
-  leaderboards
+  // The leaderboard that has the most recent test entry, will be at the top
+  const sortedLeaderboards = leaderboards
     .sort((a, b) => {
       // Get the most recent entry from each leaderboard
       const aMostRecentRun = Math.max(
-        ...a.entries.map((entry: any) => entry.recentEvaluation.getTime())
+        ...a.entries.map((entry) => entry.recentEvaluation.getTime())
       );
       const bMostRecentRun = Math.max(
-        ...b.entries.map((entry: any) => entry.recentEvaluation.getTime())
+        ...b.entries.map((entry) => entry.recentEvaluation.getTime())
       );
 
       return bMostRecentRun - aMostRecentRun;
@@ -92,20 +50,17 @@ export default function LeaderboardPage() {
     });
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="space-y-4">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-bold text-gray-900">
-            Model Leaderboard
-          </h2>
-        </div>
-
-        <div className="space-y-4">
-          {leaderboards.map((leaderboard) => (
-            <LeaderboardTable key={leaderboard.context} data={leaderboard} />
-          ))}
-        </div>
+    <>
+      <div className="flex flex-col gap-1 mb-3">
+        <h1 className="text-2xl font-semibold">Model Leaderboard</h1>
+        <p className="text-sm text-gray-500">
+          Here you can find the leaderboards for the Benchmarks and compare
+          which model performed best on each Benchmark and type
+        </p>
       </div>
-    </div>
+      {sortedLeaderboards.map((leaderboard) => (
+        <LeaderboardTable key={leaderboard.context} data={leaderboard} />
+      ))}
+    </>
   );
 }

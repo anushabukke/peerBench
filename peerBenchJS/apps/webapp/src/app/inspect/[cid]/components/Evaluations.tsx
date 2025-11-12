@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { EvaluationData } from "@/services/evaluation.service";
+import { EvaluationItem as EvaluationItemType } from "@/services/evaluation.service";
 import EvaluationItem from "./evaluation-item";
 import {
   Select,
@@ -16,7 +16,7 @@ export default function Evaluations({
   evaluations,
   user,
 }: {
-  evaluations: EvaluationData[];
+  evaluations: EvaluationItemType[];
   user: User | null;
 }) {
   // Extract unique provider IDs from evaluations

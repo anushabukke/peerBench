@@ -5,6 +5,7 @@ import {
   PromptResponseSchema,
   PromptScore,
   PromptScoreSchema,
+  PromptTypes,
   ScoringMethods,
 } from "@/types";
 import { BaseLLMProvider, OpenRouterProvider } from "@/providers";
@@ -68,30 +69,6 @@ export class LLMJudgeScorer extends AbstractScorer {
         apiKey: parsedOptions.openRouterApiKey!,
       });
 
-    if (response.prompt.answer) {
-      parsedOptions.meta = {
-        ...(parsedOptions.meta ?? {}),
-        "expected/correct answer": response.prompt.answer,
-      };
-    }
-
-    if (response.prompt.answerKey) {
-      parsedOptions.meta = {
-        ...(parsedOptions.meta ?? {}),
-        "letter for the correct answer": response.prompt.answerKey,
-      };
-    }
-
-    if (
-      response.prompt.options &&
-      Object.keys(response.prompt.options).length > 0
-    ) {
-      parsedOptions.meta = {
-        ...(parsedOptions.meta ?? {}),
-        "available options": response.prompt.options,
-      };
-    }
-
     if (parsedOptions.mode === "pointwise") {
       return this.scorePointwise(response, parsedOptions, provider);
     } else {
@@ -120,9 +97,17 @@ export class LLMJudgeScorer extends AbstractScorer {
     options: z.infer<typeof this.optionsSchema>,
     provider: BaseLLMProvider
   ): Promise<PromptScore | undefined> {
+    let task = response.prompt.fullPrompt.data;
+
+    if (response.prompt.type === PromptTypes.MultipleChoice) {
+      task += `\nCorrect answer: ${response.prompt.answerKey} - ${response.prompt.answer}`;
+    } else if (response.prompt.answer) {
+      task += `\nExpected answer: ${response.prompt.answer}`;
+    }
+
     const norm = this.normalizeWeights(options.criteria);
     const user = [
-      `TASK:\n${response.prompt.fullPrompt.data}`,
+      `TASK:\n${task}`,
       options.meta
         ? `\nADDITIONAL CONTEXT (may include references, constraints, expected behavior):\n${JSON.stringify(options.meta, null, 2)}`
         : "",
@@ -147,18 +132,19 @@ export class LLMJudgeScorer extends AbstractScorer {
       ),
     ].join("");
 
+    const scorePrompt = [
+      user,
+      "\nINSTRUCTIONS:",
+      "- Compute per-criterion integer scores within each scale.",
+      "- Compute weighted overall as a 0-100 integer: normalize weights, map each score to 0-100 by its scale, then weighted average.",
+      "- Choose verdict thresholds: ≥85 strong-pass, 70-84 pass, 60-69 borderline, <60 fail.",
+      "- Output valid JSON only.",
+    ].join("\n");
     const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: this.systemPrompt() },
       {
         role: "user",
-        content: [
-          user,
-          "\nINSTRUCTIONS:",
-          "- Compute per-criterion integer scores within each scale.",
-          "- Compute weighted overall as a 0-100 integer: normalize weights, map each score to 0-100 by its scale, then weighted average.",
-          "- Choose verdict thresholds: ≥85 strong-pass, 70-84 pass, 60-69 borderline, <60 fail.",
-          "- Output valid JSON only.",
-        ].join("\n"),
+        content: scorePrompt,
       },
     ];
 
@@ -183,16 +169,18 @@ export class LLMJudgeScorer extends AbstractScorer {
 
     // Convert overall score (0-100) to 0-1 scale for PromptScore
     const score = Math.min(1, Math.max(0, overall / 100));
-
-    const modelInfo = await provider.parseModelInfo(options.model);
     let explanation = "";
 
     if (json.notes && json.notes.length > 0) {
-      explanation = json.notes.join("\n");
+      explanation = json.notes.join(". ");
     }
 
     for (const criterion of json.perCriterion) {
-      explanation += `\nCriteria: ${criterion.id} - Score: ${criterion.score} - Justification: ${criterion.justification}\n`;
+      explanation += [
+        `Criteria: ${criterion.id}`,
+        `Score: ${criterion.score}`,
+        `Justification:\n${criterion.justification}\n`,
+      ].join("\n");
     }
 
     return PromptScoreSchema.parse({
@@ -204,20 +192,22 @@ export class LLMJudgeScorer extends AbstractScorer {
       scorerAI: {
         provider: provider.identifier,
         modelId: options.model,
-        modelHost: modelInfo?.host ?? "auto",
-        modelName: modelInfo?.name ?? "unknown",
-        modelOwner: modelInfo?.owner ?? "unknown",
+        modelHost: "auto",
+        modelName: "unknown",
+        modelOwner: "unknown",
         inputTokensUsed: llmResponse.inputTokensUsed,
         outputTokensUsed: llmResponse.outputTokensUsed,
         inputCost: llmResponse.inputCost,
         outputCost: llmResponse.outputCost,
       },
       scoreMetadata: {
+        overall,
         scorerIdentifier: this.identifier,
         mode: "pointwise",
-        overall,
         perCriterion: json.perCriterion,
         verdict: json.verdict,
+        scorePrompt,
+        systemPrompt: this.systemPrompt(),
       },
       explanation: explanation || undefined,
     });
@@ -260,13 +250,14 @@ export class LLMJudgeScorer extends AbstractScorer {
       ),
     ].join("");
 
+    const systemPrompt = [
+      this.systemPrompt(),
+      "When comparing, do not reward verbosity or length. Prefer factual accuracy, adherence to instructions, safety, and clarity.",
+    ].join(" ");
     const messages: ChatCompletionMessageParam[] = [
       {
         role: "system",
-        content: [
-          this.systemPrompt(),
-          "When comparing, do not reward verbosity or length. Prefer factual accuracy, adherence to instructions, safety, and clarity.",
-        ].join(" "),
+        content: systemPrompt,
       },
       { role: "user", content: user },
     ];
@@ -294,8 +285,6 @@ export class LLMJudgeScorer extends AbstractScorer {
       score = 0.0;
     }
 
-    const modelInfo = await provider.parseModelInfo(options.model);
-
     let explanation = "";
 
     if (json.rationale) {
@@ -303,7 +292,11 @@ export class LLMJudgeScorer extends AbstractScorer {
     }
 
     for (const criterion of json.perCriterion) {
-      explanation += `\nCriteria: ${criterion.id} - Better: ${criterion.better} - Justification: ${criterion.justification}\n`;
+      explanation += [
+        `Criteria: ${criterion.id}`,
+        `Better: ${criterion.better}`,
+        `Justification:\n${criterion.justification}\n`,
+      ].join("\n");
     }
 
     return PromptScoreSchema.parse({
@@ -315,9 +308,13 @@ export class LLMJudgeScorer extends AbstractScorer {
       scorerAI: {
         provider: provider.identifier,
         modelId: options.model,
-        modelHost: modelInfo?.host ?? "auto",
-        modelName: modelInfo?.name ?? "unknown",
-        modelOwner: modelInfo?.owner ?? "unknown",
+        modelHost: "auto",
+        modelName: "unknown",
+        modelOwner: "unknown",
+        inputTokensUsed: content.inputTokensUsed,
+        outputTokensUsed: content.outputTokensUsed,
+        inputCost: content.inputCost,
+        outputCost: content.outputCost,
       },
       scoreMetadata: {
         scorerIdentifier: this.identifier,
@@ -327,6 +324,8 @@ export class LLMJudgeScorer extends AbstractScorer {
         rationale: json.rationale,
         perCriterion: json.perCriterion,
         responseB: options.responseB.data,
+        systemPrompt,
+        scorePrompt: user,
       },
       explanation: explanation || undefined,
     });

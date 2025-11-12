@@ -6,7 +6,7 @@ import {
   Upload,
   /*  MessageSquare, */ Trophy,
 } from "lucide-react";
-import { formatNumber } from "@/utils/supabase/format-number";
+import { formatNumber } from "@/utils/format-number";
 
 interface OrganizationStatsProps {
   stats: OrganizationStatsType | null;

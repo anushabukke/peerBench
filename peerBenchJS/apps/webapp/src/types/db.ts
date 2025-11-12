@@ -1,24 +1,21 @@
 import { db } from "@/database/client";
 
 /**
- * @deprecated Use `DBTransaction` instead
+ * @deprecated Use `DbTx` instead
  */
 export type Transaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
-export type DBTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type DbTx =
+  | Parameters<Parameters<typeof db.transaction>[0]>[0]
+  | typeof db;
 
-/**
- * @deprecated Use `PaginatedResponse`, `PaginationResponse` instead
- */
-export type PaginatedResult<T> = {
-  data: T[];
-  pagination: {
-    totalRecords: number;
-    totalPages: number;
-    currentPage: number;
-    nextPage: number | null;
-    previousPage: number | null;
-  };
-};
+export type DbOptions<TxIsRequired extends boolean = false> =
+  TxIsRequired extends true
+    ? {
+        tx: DbTx;
+      }
+    : {
+        tx?: DbTx;
+      };
 
 export type PaginationOptions = {
   page?: number;

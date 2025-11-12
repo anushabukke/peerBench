@@ -4,14 +4,17 @@ import {
   ReactNode,
   SetStateAction,
   useContext,
-  useEffect,
   useState,
+  useCallback,
+  useMemo,
 } from "react";
-import { FileListItem } from "@/services/file.service";
-import { usePreloader } from "@/hooks/usePreloader";
+import useSWR from "swr";
+import { apiFetcher } from "@/lib/swr/api-fetcher";
+import { SWR_GET_FILES } from "@/lib/swr/keys";
+import type { ResponseType } from "../api/v1/files/get";
 
 interface PageContextValue {
-  items: FileListItem[];
+  items: ResponseType["data"];
   total: number;
   loading: boolean;
   error: string | null;
@@ -31,59 +34,34 @@ interface PageContextProviderProps {
 }
 
 export const PageContextProvider = ({ children }: PageContextProviderProps) => {
-  const { getCachedData, isDataAvailable, isPreloading } = usePreloader();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [items, setItems] = useState<FileListItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  const handlePageSizeChange = (size: number) => {
+  const handlePageSizeChange = useCallback((size: number) => {
     setPageSize(size);
     setPage(1);
-  };
+  }, []);
 
-  // Load results
-  useEffect(() => {
-    setLoading(true);
-    setError(null);
+  // Build the API URL with pagination parameters
+  const apiUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("page", page.toString());
+    params.set("pageSize", pageSize.toString());
+    return `${SWR_GET_FILES}?${params.toString()}`;
+  }, [page, pageSize]);
 
-    // Try to get cached data first for the first page
-    if (page === 1) {
-      const cachedInspect = getCachedData('inspect');
-      if (cachedInspect) {
-        setItems(cachedInspect.files);
-        setTotal(cachedInspect.total);
-        setLoading(false);
-        return;
-      }
-    }
+  // Use SWR to fetch data
+  const { data, error, isLoading } = useSWR<ResponseType>(apiUrl, apiFetcher, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    dedupingInterval: 60000, // 1 minute
+  });
 
-    // If no cached data or not first page, fetch fresh data
-    if ((!isDataAvailable('inspect') && !isPreloading) || page !== 1) {
-      fetch(`/api/v1/inspect/files?page=${page}&pageSize=${pageSize}`)
-        .then((response) => {
-          if (response.ok) {
-            return response.json();
-          }
-          throw new Error('Failed to fetch files');
-        })
-        .then((data) => {
-          setItems(data.results);
-          setTotal(data.total);
-        })
-        .catch((err) => {
-          setError(err.message || "Failed to fetch audit files");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
-      // Still preloading, keep loading state
-      setLoading(true);
-    }
-  }, [page, pageSize, getCachedData, isDataAvailable, isPreloading]);
+  // Extract data from SWR response
+  const items = data?.data || [];
+  const total = data?.pagination?.totalCount || 0;
+  const loading = isLoading;
+  const errorMessage = error ? error.message || "Failed to fetch files" : null;
 
   return (
     <PageContext.Provider
@@ -91,7 +69,7 @@ export const PageContextProvider = ({ children }: PageContextProviderProps) => {
         items,
         total,
         loading,
-        error,
+        error: errorMessage,
         page,
         setPage,
         pageSize,

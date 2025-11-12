@@ -1,6 +1,13 @@
 /**
- * @deprecated will be removed in the future
+ * @deprecated Use `QuickFeedbackOpinions` instead.
  */
-export type FeedbackFlag = "incorrect" | "unclear" | "typo" | "other";
+export const ReviewOpinions = {
+  positive: "positive",
+  negative: "negative",
+} as const;
 
-export type ReviewOpinion = "positive" | "negative" | "neutral";
+/**
+ * @deprecated Use `QuickFeedbackOpinion` instead.
+ */
+export type ReviewOpinion =
+  (typeof ReviewOpinions)[keyof typeof ReviewOpinions];

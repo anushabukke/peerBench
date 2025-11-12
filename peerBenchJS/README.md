@@ -1,6 +1,94 @@
 
+# peerBench
 
-# The problem:   
+A decentralized AI model benchmarking platform that addresses industry-wide overfitting issues through continuous validation with private test data and publicly auditable scoring.
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js**: Version 18 or higher
+- **Package Manager**: **npm only** (do not use pnpm, yarn, or other package managers)
+
+⚠️ **Important**: This project uses npm workspaces and is specifically configured for npm. Using other package managers like pnpm or yarn may cause build issues and is not supported.
+
+### Installation
+
+1. Clone the repository:
+
+```bash
+git clone <repository-url>
+cd dev-peerBenchJS
+```
+
+2. Install dependencies using npm:
+
+```bash
+npm install
+```
+
+### Building the Project
+
+This is a Turborepo monorepo containing multiple packages. Build all packages at once:
+
+```bash
+npm run build
+```
+
+Or build individual packages:
+
+```bash
+# Build SDK (required dependency for other apps)
+cd packages/sdk
+npm run build
+
+# Build CLI app
+cd apps/cli
+npm run _build
+
+# Build web app
+cd apps/webapp
+npm run build
+```
+
+### Development
+
+Start development servers:
+
+```bash
+# Start web app only
+npm run dev-web
+
+# Start CLI development
+npm run dev-cli
+
+# Start all packages
+npm run dev
+```
+
+### Project Structure
+
+- **`apps/cli`** - Command-line tool for AI model benchmarking
+- **`apps/webapp`** - Next.js frontend application
+- **`apps/pigeon`** - Additional service
+- **`packages/sdk`** - Shared TypeScript SDK
+
+### CLI Usage
+
+After building, you can use the CLI:
+
+```bash
+cd apps/cli
+./peerbench --help
+# or
+node dist/index.js --help
+```
+
+For detailed CLI usage, see the [CLI README](apps/cli/README.md).
+
+---
+
+# The problem:
 
 Public benchmark test data sets make AI model performance comparable. But this creates an incentivization for closed source models to cheat the benchmarks by training on test data or creating heuristics that overfit the benchmark test dataset .
 

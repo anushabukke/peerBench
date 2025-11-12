@@ -1,3 +1,4 @@
+-- CAUTION: This is a deprecated view and not in use anymore. Don't use and reference it.
 CREATE
 OR REPLACE VIEW v_leaderboard AS
 SELECT

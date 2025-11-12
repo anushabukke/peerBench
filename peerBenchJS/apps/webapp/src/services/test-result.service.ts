@@ -1,11 +1,11 @@
 import {
   evaluationsTable,
   filesTable,
-  promptReviewsTable,
+  promptSetPrompts,
   promptSetsTable,
   promptsTable,
-  testResultReviewsTable,
   testResultsTable,
+  userRoleOnPromptSetTable,
 } from "@/database/schema";
 import { db } from "@/database/client";
 import {
@@ -15,75 +15,90 @@ import {
   eq,
   gt,
   gte,
+  inArray,
   isNotNull,
   isNull,
   lte,
   not,
+  or,
+  SQL,
   sql,
 } from "drizzle-orm";
 import { PromptType } from "@peerbench/sdk";
-import { PaginatedResult } from "@/types/db";
+import { DbOptions, PaginationOptions } from "@/types/db";
+import { withTxOrDb } from "@/database/helpers";
+import { paginateQuery } from "@/database/query";
+import { ReviewOpinion } from "@/types/review";
+import { ReviewService } from "./review.service";
+import { UserRoleOnPromptSet } from "@/database/types";
+import { PgColumn } from "drizzle-orm/pg-core";
+import { ADMIN_USER_ID } from "@/lib/constants";
 
 export class TestResultService {
-  static async getTestResults(options?: {
-    filters?: {
-      promptId?: string | null;
-      evaluationId?: number | null;
-      testName?: string | null;
-      provider?: string | null;
-      modelName?: string | null;
-      minScore?: number | null;
-      maxScore?: number | null;
-      isSuccess?: boolean | null;
-      promptType?: string | null;
-      promptSetTitle?: string | null;
+  static async getTestResults(
+    options?: DbOptions &
+      PaginationOptions & {
+        requestedByUserId?: string;
+        filters?: {
+          promptId?: string | null;
+          evaluationId?: number | null;
+          testName?: string | null;
+          provider?: string | null;
+          modelName?: string | null;
+          minScore?: number | null;
+          maxScore?: number | null;
+          isSuccess?: boolean | null;
+          promptType?: string | null;
+          promptSetTitle?: string | null;
 
-      // TODO: Remove after PubMed prompt analysis phase is done because these values are stored in a JSONB column and it might be expensive to work with them.
-      scoreStrategy?: string | null;
-      replaceEntityStrategy?: string | null;
-      paragraphMergeStrategy?: string | null;
-      pickTextStrategy?: string | null;
-      typoDifficulty?: string | null;
-    };
-    requestedByUserId?: string;
-    page?: number;
-    pageSize?: number;
-  }) {
-    const {
-      filters,
-      page = 1,
-      pageSize = 10,
-      requestedByUserId,
-    } = options || {};
-    const conditions = [];
-    let countQuery = db
-      .select({ total: count() })
-      .from(testResultsTable)
-      .$dynamic();
+          // TODO: Remove after PubMed prompt analysis phase is done because these values are stored in a JSONB column and it might be expensive to work with them.
+          scoreStrategy?: string | null;
+          replaceEntityStrategy?: string | null;
+          paragraphMergeStrategy?: string | null;
+          pickTextStrategy?: string | null;
+          typoDifficulty?: string | null;
+        };
+      }
+  ) {
+    return withTxOrDb(async (tx) => {
+      const userTestResultReviewsSubQuery =
+        ReviewService.testResultReviewsSubQuery({ tx });
+      const userPromptReviewsSubQuery = ReviewService.promptReviewsSubQuery({
+        tx,
+      });
 
-    let query = db
-      .select({
-        id: testResultsTable.id,
-        raw: testResultsTable.raw,
-        fileCID: filesTable.cid,
-        testName: sql<string>`
+      let query = tx
+        .with(userTestResultReviewsSubQuery, userPromptReviewsSubQuery)
+        .select({
+          id: testResultsTable.id,
+          fileCID: filesTable.cid,
+          metadata: testResultsTable.metadata,
+          startedAt: testResultsTable.startedAt,
+          finishedAt: testResultsTable.finishedAt,
+          evaluationId: testResultsTable.evaluationId,
+          provider: sql<string>`''`, // testResultsTable.provider,
+          score: testResultsTable.score,
+
+          testName: sql<string>`
             CASE
               WHEN ${isNotNull(testResultsTable.testName)} THEN ${testResultsTable.testName}
-              ELSE 'PeerBench Benchmark'
+              ELSE 'peerBench Benchmark'
             END
           `,
-        isSuccess: sql<boolean>`
+          isSuccess: sql<boolean>`
             CASE WHEN ${gt(testResultsTable.score, 0)}
               THEN TRUE
               ELSE FALSE
             END
           `,
-        result: sql<any>`
+
+          // TODO: Now we have additional columns that include data so we don't need to include so many fields within the result column. Think to refactor this.
+          result: sql<any>`
             CASE
               WHEN ${isNull(testResultsTable.promptId)} THEN ${testResultsTable.result}
               ELSE jsonb_build_object(
                 'promptId', ${testResultsTable.promptId},
-  
+
                 'correctAnswer', (
                   CASE WHEN ${and(
                     not(eq(promptsTable.answerKey, "")),
@@ -100,14 +115,14 @@ export class TestResultService {
                 'response', ${testResultsTable.response},
                 -- TODO: Completely remove taskId from the db schema
                 -- 'taskId', ${testResultsTable.taskId},
-                'modelName', ${testResultsTable.modelName},
-                'modelHost', ${testResultsTable.modelHost},
-                'modelOwner', ${testResultsTable.modelOwner},
-                'provider', ${testResultsTable.provider},
+                'modelName', ${/* testResultsTable.modelName */ null},
+                'modelHost', ${/* testResultsTable.modelHost */ null},
+                'modelOwner', ${/* testResultsTable.modelOwner */ null},
+                'provider', ${/* testResultsTable.provider */ null},
                 'startedAt', ${testResultsTable.startedAt},
                 'finishedAt', ${testResultsTable.finishedAt},
                 'source', ${evaluationsTable.source},
-  
+
                 -- Combine metadata from test result and prompt
                 'metadata', ${testResultsTable.metadata} || ${promptsTable.metadata},
                 'score', ${testResultsTable.score},
@@ -116,46 +131,130 @@ export class TestResultService {
             END
           `,
 
-        reviews: sql<
-          {
-            property: string | null;
-            id: number;
-          }[]
-        >`COALESCE(jsonb_agg(
-            jsonb_build_object(
-              'property', ${testResultReviewsTable.property},
-              'id', ${testResultReviewsTable.id}
-            )
-          ) FILTER (WHERE ${isNotNull(testResultReviewsTable.id)}), '[]'::jsonb)`,
-        promptReviewId: promptReviewsTable.id,
-      })
-      .from(testResultsTable)
-      .leftJoin(
-        evaluationsTable,
-        eq(testResultsTable.evaluationId, evaluationsTable.id)
-      )
-      .leftJoin(filesTable, eq(evaluationsTable.fileId, filesTable.id))
-      .leftJoin(promptsTable, eq(testResultsTable.promptId, promptsTable.id))
-      .leftJoin(
-        testResultReviewsTable,
-        and(
-          eq(testResultReviewsTable.testResultId, testResultsTable.id),
-          eq(
-            testResultReviewsTable.userId,
-            requestedByUserId || sql.raw("NULL")
-          )
+          // The reviews that user made for the properties of the test result
+          // Only included if `requestedByUserId` is given
+          userPropertyReviews:
+            options?.requestedByUserId !== undefined
+              ? sql<
+                  {
+                    id: number;
+                    opinion: ReviewOpinion;
+                    property: string;
+                    comment: string;
+                    createdAt: Date;
+                    flags: (typeof userTestResultReviewsSubQuery)["flags"]["_"]["type"];
+                  }[]
+                >`
+            COALESCE(jsonb_agg(
+              DISTINCT jsonb_build_object(
+                'id', ${userTestResultReviewsSubQuery.id},
+                'opinion', ${userTestResultReviewsSubQuery.opinion},
+                'property', ${userTestResultReviewsSubQuery.property},
+                'comment', ${userTestResultReviewsSubQuery.comment},
+                'createdAt', ${userTestResultReviewsSubQuery.createdAt},
+                'flags', ${userTestResultReviewsSubQuery.flags}
+              )
+            ) FILTER (WHERE
+                        ${and(
+                          // Only include property specific reviews
+                          isNotNull(userTestResultReviewsSubQuery.property),
+                          isNotNull(userTestResultReviewsSubQuery.id)
+                        )}), '[]'::jsonb)
+          `
+              : sql<null>`NULL`,
+
+          // The review that user made for the whole result (not a property-specific review)
+          // Only included if `requestedByUserId` is given
+          userTestResultReview:
+            options?.requestedByUserId !== undefined
+              ? sql<{
+                  id: number;
+                  opinion: ReviewOpinion;
+                  comment: string;
+                  createdAt: Date;
+                  flags: (typeof userTestResultReviewsSubQuery)["flags"]["_"]["type"];
+                }>`
+                  (COALESCE(jsonb_agg(
+                    jsonb_build_object(
+                      'id', ${userTestResultReviewsSubQuery.id},
+                      'comment', ${userTestResultReviewsSubQuery.comment},
+                      'opinion', ${userTestResultReviewsSubQuery.opinion},
+                      'createdAt', ${userTestResultReviewsSubQuery.createdAt},
+                      'flags', ${userTestResultReviewsSubQuery.flags}
+                    )
+                  ) FILTER (WHERE
+                              ${and(
+                                // Only include whole test result review which is
+                                // the one that has a null `property` field
+                                isNull(userTestResultReviewsSubQuery.property),
+                                isNotNull(userTestResultReviewsSubQuery.id)
+                              )}), '[]'::jsonb))->0
+                  `
+              : sql<null>`NULL`,
+
+          // The review that user made for the Prompt that was used
+          // in the test result (if the test result was using a Prompt)
+          // Only include the review if the requested user is known
+          userPromptReview:
+            options?.requestedByUserId !== undefined
+              ? sql<{
+                  id: number;
+                  opinion: ReviewOpinion;
+                  comment: string;
+                  createdAt: Date;
+                  flags: (typeof userPromptReviewsSubQuery)["flags"]["_"]["type"];
+                }>`
+                 (COALESCE(jsonb_agg(
+                    jsonb_build_object(
+                      'id', ${userPromptReviewsSubQuery.id},
+                      'comment', ${userPromptReviewsSubQuery.comment},
+                      'opinion', ${userPromptReviewsSubQuery.opinion},
+                      'createdAt', ${userPromptReviewsSubQuery.createdAt},
+                      'flags', ${userPromptReviewsSubQuery.flags}
+                    )
+                  ) FILTER (WHERE ${and(isNotNull(userPromptReviewsSubQuery.id))}), '[]'::jsonb))->0
+                `
+              : sql<null>`NULL`,
+
+          // peerBench specific fields
+          modelName: sql<string>`''`, // testResultsTable.modelName,
+          modelHost: sql<string>`''`, // testResultsTable.modelHost,
+          modelOwner: sql<string>`''`, // testResultsTable.modelOwner,
+          modelId: testResultsTable.modelId,
+          taskId: testResultsTable.taskId,
+          response: testResultsTable.response,
+          cid: testResultsTable.cid,
+          sha256: testResultsTable.sha256,
+          promptId: testResultsTable.promptId,
+
+          // ForestAI specific fields
+          raw: testResultsTable.raw,
+        })
+        .from(testResultsTable)
+        // TODO: Probably this can be an inner join
+        .leftJoin(
+          evaluationsTable,
+          eq(testResultsTable.evaluationId, evaluationsTable.id)
         )
-      )
-      .leftJoin(
-        promptReviewsTable,
-        and(
-          eq(promptReviewsTable.promptId, promptsTable.id),
-          eq(promptReviewsTable.userId, requestedByUserId || sql.raw("NULL"))
+        .leftJoin(filesTable, eq(evaluationsTable.fileId, filesTable.id))
+        .leftJoin(promptsTable, eq(testResultsTable.promptId, promptsTable.id))
+        .orderBy(desc(testResultsTable.finishedAt))
+        .$dynamic();
+
+      // TODO: Make joins conditional only if certain filters are applied
+      let countQuery = tx
+        .select({ count: count() })
+        .from(testResultsTable)
+        .leftJoin(
+          evaluationsTable,
+          eq(testResultsTable.evaluationId, evaluationsTable.id)
         )
-      )
-      .limit(pageSize)
-      .orderBy(desc(testResultsTable.finishedAt))
-      .groupBy(
+        .leftJoin(filesTable, eq(evaluationsTable.fileId, filesTable.id))
+        .leftJoin(promptsTable, eq(testResultsTable.promptId, promptsTable.id))
+        .$dynamic();
+
+      const whereConditions = [];
+      const groupColumns: (PgColumn | SQL.Aliased<any>)[] = [
         testResultsTable.id,
         testResultsTable.metadata,
         testResultsTable.score,
@@ -165,133 +264,239 @@ export class TestResultService {
         promptsTable.metadata,
         promptsTable.type,
         evaluationsTable.source,
-        promptReviewsTable.id,
-        filesTable.cid
-      )
-      .offset((page - 1) * pageSize)
-      .$dynamic();
+        filesTable.cid,
+      ];
 
-    let isPromptsTableJoined = false;
-    const joinPromptsToCountQuery = () => {
-      if (isPromptsTableJoined) {
-        return;
+      if (
+        options?.requestedByUserId !== undefined &&
+        options.requestedByUserId !== ADMIN_USER_ID // ACL rules doesn't apply to admin user
+      ) {
+        query = query
+          .leftJoin(
+            userPromptReviewsSubQuery,
+            and(
+              eq(userPromptReviewsSubQuery.promptId, testResultsTable.promptId),
+              eq(userPromptReviewsSubQuery.userId, options?.requestedByUserId)
+            )
+          )
+          .leftJoin(
+            userTestResultReviewsSubQuery,
+            and(
+              eq(
+                userTestResultReviewsSubQuery.testResultId,
+                testResultsTable.id
+              ),
+              eq(
+                userTestResultReviewsSubQuery.userId,
+                options?.requestedByUserId
+              )
+            )
+          )
+          .leftJoin(
+            promptSetPrompts,
+            eq(promptSetPrompts.promptId, testResultsTable.promptId)
+          )
+          .leftJoin(
+            promptSetsTable,
+            eq(promptSetsTable.id, promptSetPrompts.promptSetId)
+          )
+          .leftJoin(
+            userRoleOnPromptSetTable,
+            and(
+              eq(
+                userRoleOnPromptSetTable.promptSetId,
+                promptSetPrompts.promptSetId
+              ),
+              eq(
+                userRoleOnPromptSetTable.userId,
+                options?.requestedByUserId || sql`NULL`
+              )
+            )
+          );
+        countQuery = countQuery
+          .leftJoin(
+            promptSetPrompts,
+            eq(promptSetPrompts.promptId, testResultsTable.promptId)
+          )
+          .leftJoin(
+            promptSetsTable,
+            eq(promptSetPrompts.promptSetId, promptSetsTable.id)
+          )
+          .leftJoin(
+            userRoleOnPromptSetTable,
+            and(
+              eq(
+                userRoleOnPromptSetTable.promptSetId,
+                promptSetPrompts.promptSetId
+              ),
+              eq(
+                userRoleOnPromptSetTable.userId,
+                options?.requestedByUserId || sql`NULL`
+              )
+            )
+          );
+
+        whereConditions.push(
+          or(
+            // Forest AI data is always public
+            isNull(evaluationsTable.promptSetId),
+
+            // Otherwise Prompt Set access control rules apply
+            eq(promptSetsTable.isPublic, true),
+            inArray(userRoleOnPromptSetTable.role, [
+              UserRoleOnPromptSet.admin,
+              UserRoleOnPromptSet.owner,
+              UserRoleOnPromptSet.collaborator,
+              UserRoleOnPromptSet.reviewer,
+            ])
+          )
+        );
       }
-      isPromptsTableJoined = true;
-      countQuery = countQuery.leftJoin(
-        promptsTable,
-        eq(testResultsTable.promptId, promptsTable.id)
-      );
-    };
 
-    let isPromptSetsTableJoined = false;
-    const joinPromptSetsToQueries = () => {
-      if (isPromptSetsTableJoined) {
-        return;
+      let joinPromptsTable = false;
+      let joinPromptSetsTable = false;
+
+      if (options?.filters?.promptId) {
+        whereConditions.push(
+          eq(testResultsTable.promptId, options.filters.promptId)
+        );
       }
-      isPromptSetsTableJoined = true;
-      countQuery = countQuery.leftJoin(
-        promptSetsTable,
-        eq(promptsTable.promptSetId, promptSetsTable.id)
-      );
-      query = query.leftJoin(
-        promptSetsTable,
-        eq(promptsTable.promptSetId, promptSetsTable.id)
-      );
-    };
+      if (options?.filters?.evaluationId) {
+        whereConditions.push(
+          eq(testResultsTable.evaluationId, options.filters.evaluationId)
+        );
+      }
+      if (options?.filters?.testName) {
+        whereConditions.push(
+          eq(testResultsTable.testName, options.filters.testName)
+        );
+      }
+      // if (options?.filters?.provider) {
+      //   whereConditions.push(
+      //     eq(testResultsTable.provider, options.filters.provider)
+      //   );
+      // }
+      // if (options?.filters?.modelName) {
+      //   whereConditions.push(
+      //     eq(testResultsTable.modelName, options.filters.modelName)
+      //   );
+      // }
+      if (
+        options?.filters?.minScore !== undefined &&
+        options.filters.minScore !== null
+      ) {
+        whereConditions.push(
+          gte(testResultsTable.score, options.filters.minScore)
+        );
+      }
+      if (
+        options?.filters?.maxScore !== undefined &&
+        options.filters.maxScore !== null
+      ) {
+        whereConditions.push(
+          lte(testResultsTable.score, options.filters.maxScore)
+        );
+      }
+      if (options?.filters?.scoreStrategy) {
+        whereConditions.push(
+          eq(
+            sql`${testResultsTable.metadata}->>'scoreStrategy'`,
+            options.filters.scoreStrategy
+          )
+        );
+      }
+      if (options?.filters?.replaceEntityStrategy) {
+        whereConditions.push(
+          eq(
+            sql`${promptsTable.metadata}->>'replaceEntityStrategy'`,
+            options.filters.replaceEntityStrategy
+          )
+        );
+        joinPromptsTable = true;
+      }
+      if (options?.filters?.paragraphMergeStrategy) {
+        whereConditions.push(
+          eq(
+            sql`${promptsTable.metadata}->>'paragraphMergeStrategy'`,
+            options.filters.paragraphMergeStrategy
+          )
+        );
+        joinPromptsTable = true;
+      }
+      if (options?.filters?.pickTextStrategy) {
+        whereConditions.push(
+          eq(
+            sql`${promptsTable.metadata}->>'pickTextStrategy'`,
+            options.filters.pickTextStrategy
+          )
+        );
+        joinPromptsTable = true;
+      }
+      if (options?.filters?.typoDifficulty) {
+        whereConditions.push(
+          eq(
+            sql`${promptsTable.metadata}->>'difficulty'`,
+            options.filters.typoDifficulty
+          )
+        );
+        joinPromptsTable = true;
+      }
+      if (options?.filters?.isSuccess === true) {
+        whereConditions.push(gt(testResultsTable.score, 0));
+      } else if (options?.filters?.isSuccess === false) {
+        whereConditions.push(eq(testResultsTable.score, 0));
+      }
+      if (options?.filters?.promptType) {
+        whereConditions.push(
+          eq(promptsTable.type, options.filters.promptType as PromptType)
+        );
+        joinPromptsTable = true;
+      }
+      if (options?.filters?.promptSetTitle) {
+        whereConditions.push(
+          eq(promptSetsTable.title, options.filters.promptSetTitle)
+        );
+        joinPromptsTable = true;
+        joinPromptSetsTable = true;
+      }
 
-    if (filters?.promptId) {
-      conditions.push(eq(testResultsTable.promptId, filters.promptId));
-    }
-    if (filters?.evaluationId) {
-      conditions.push(eq(testResultsTable.evaluationId, filters.evaluationId));
-    }
-    if (filters?.testName) {
-      conditions.push(eq(testResultsTable.testName, filters.testName));
-    }
-    if (filters?.provider) {
-      conditions.push(eq(testResultsTable.provider, filters.provider));
-    }
-    if (filters?.modelName) {
-      conditions.push(eq(testResultsTable.modelName, filters.modelName));
-    }
-    if (filters?.minScore !== undefined && filters.minScore !== null) {
-      conditions.push(gte(testResultsTable.score, filters.minScore));
-    }
-    if (filters?.maxScore !== undefined && filters.maxScore !== null) {
-      conditions.push(lte(testResultsTable.score, filters.maxScore));
-    }
-    if (filters?.scoreStrategy) {
-      conditions.push(
-        eq(
-          sql`${testResultsTable.metadata}->>'scoreStrategy'`,
-          filters.scoreStrategy
-        )
-      );
-    }
-    if (filters?.replaceEntityStrategy) {
-      joinPromptsToCountQuery();
-      conditions.push(
-        eq(
-          sql`${promptsTable.metadata}->>'replaceEntityStrategy'`,
-          filters.replaceEntityStrategy
-        )
-      );
-    }
-    if (filters?.paragraphMergeStrategy) {
-      joinPromptsToCountQuery();
-      conditions.push(
-        eq(
-          sql`${promptsTable.metadata}->>'paragraphMergeStrategy'`,
-          filters.paragraphMergeStrategy
-        )
-      );
-    }
-    if (filters?.pickTextStrategy) {
-      joinPromptsToCountQuery();
-      conditions.push(
-        eq(
-          sql`${promptsTable.metadata}->>'pickTextStrategy'`,
-          filters.pickTextStrategy
-        )
-      );
-    }
-    if (filters?.typoDifficulty) {
-      joinPromptsToCountQuery();
-      conditions.push(
-        eq(sql`${promptsTable.metadata}->>'difficulty'`, filters.typoDifficulty)
-      );
-    }
-    if (filters?.isSuccess === true) {
-      conditions.push(gt(testResultsTable.score, 0));
-    } else if (filters?.isSuccess === false) {
-      conditions.push(eq(testResultsTable.score, 0));
-    }
-    if (filters?.promptType) {
-      joinPromptsToCountQuery();
-      conditions.push(eq(promptsTable.type, filters.promptType as PromptType));
-    }
-    if (filters?.promptSetTitle) {
-      // Also join prompts to the count query since the relation flow goes through test_results -> prompts -> prompt_sets
-      joinPromptsToCountQuery();
-      joinPromptSetsToQueries();
-      conditions.push(eq(promptSetsTable.title, filters.promptSetTitle));
-    }
+      // Join additional tables if needed
+      if (joinPromptsTable) {
+        countQuery = countQuery.leftJoin(
+          promptsTable,
+          eq(testResultsTable.promptId, promptsTable.id)
+        );
+      }
+      if (joinPromptSetsTable) {
+        countQuery = countQuery
+          .leftJoin(
+            promptSetPrompts,
+            eq(promptsTable.id, promptSetPrompts.promptId)
+          )
+          .leftJoin(
+            promptSetsTable,
+            eq(promptSetPrompts.promptSetId, promptSetsTable.id)
+          );
+        query = query
+          .leftJoin(
+            promptSetPrompts,
+            eq(promptsTable.id, promptSetPrompts.promptId)
+          )
+          .leftJoin(
+            promptSetsTable,
+            eq(promptSetPrompts.promptSetId, promptSetsTable.id)
+          );
+      }
 
-    // Apply conditions
-    query = query.where(and(...conditions));
-
-    const [{ total }] = await countQuery.where(and(...conditions));
-    const results = await query;
-    return {
-      data: results,
-      pagination: {
-        totalRecords: total,
-        totalPages: Math.ceil(total / pageSize) || 1,
-        currentPage: page,
-        nextPage: page * pageSize < total ? page + 1 : null,
-        previousPage: page > 1 ? page - 1 : null,
-      },
-    } as PaginatedResult<(typeof results)[number]>;
+      return await paginateQuery(
+        query.where(and(...whereConditions)).groupBy(...groupColumns),
+        countQuery.where(and(...whereConditions)),
+        {
+          page: options?.page,
+          pageSize: options?.pageSize,
+        }
+      );
+    }, options?.tx);
   }
 
   static async getTestResultFilterValues(options?: { evaluationId?: number }) {
@@ -311,8 +516,8 @@ export class TestResultService {
     const results = await db
       .select({
         testName: testResultsTable.testName,
-        provider: testResultsTable.provider,
-        modelName: testResultsTable.modelName,
+        provider: sql<string>`''`, // testResultsTable.provider,
+        modelName: sql<string>`''`, // testResultsTable.modelName,
         promptType: promptsTable.type,
         promptSetTitle: promptSetsTable.title,
         scoreStrategy,
@@ -324,13 +529,15 @@ export class TestResultService {
       .from(testResultsTable)
       .leftJoin(promptsTable, eq(testResultsTable.promptId, promptsTable.id))
       .leftJoin(
+        promptSetPrompts,
+        eq(promptsTable.id, promptSetPrompts.promptId)
+      )
+      .leftJoin(
         promptSetsTable,
-        eq(promptsTable.promptSetId, promptSetsTable.id)
+        eq(promptSetPrompts.promptSetId, promptSetsTable.id)
       )
       .groupBy(
         testResultsTable.testName,
-        testResultsTable.provider,
-        testResultsTable.modelName,
         promptsTable.type,
         promptSetsTable.title,
         scoreStrategy,
@@ -406,16 +613,84 @@ export class TestResultService {
       },
     };
   }
+
+  /**
+   * Subquery for Prompt stats per model.
+   */
+  static statsForPromptSubQuery(
+    options: DbOptions<true> & {
+      correctThreshold?: number;
+      failedThreshold?: number;
+      subQueryName?: string;
+    }
+  ) {
+    const correctThreshold = options.correctThreshold?.toFixed?.(2) || "0.5";
+    const failedThreshold = options.failedThreshold?.toFixed?.(2) || "0";
+
+    return options.tx.$with(options.subQueryName || "sq_test_results_stats").as(
+      options.tx
+        .select({
+          // TODO: Maybe we can make this sub query more generic to include bunch of stats about a test result rather than just Prompt related things?
+          promptId: testResultsTable.promptId,
+          modelName: sql<string>`${/* testResultsTable.modelName */ null}`.as(
+            "model_name"
+          ),
+          testsCount: count(testResultsTable.id).as("test_count"),
+          correctTestsCount: sql<number>`
+            SUM(
+              CASE WHEN ${testResultsTable.score} > ${sql.raw(correctThreshold)}
+              THEN 1
+              ELSE 0
+              END
+            )
+          `
+            .mapWith(Number)
+            .as("correct_tests_count"),
+          failedTestsCount: sql<number>`
+            SUM(
+              CASE WHEN ${testResultsTable.score} <= ${sql.raw(failedThreshold)}
+              THEN 1
+              ELSE 0
+              END
+            )
+          `
+            .mapWith(Number)
+            .as("failed_tests_count"),
+          avgScore: sql<number>`AVG(${testResultsTable.score})`
+            .mapWith(Number)
+            .as("avg_score"),
+          score: sql<number>`SUM(${testResultsTable.score})`
+            .mapWith(Number)
+            .as("score"),
+        })
+        .from(testResultsTable)
+        .orderBy(desc(sql`score`))
+        .groupBy(testResultsTable.promptId)
+    );
+  }
 }
 
 export type GetTestResultsParams = Parameters<
   (typeof TestResultService)["getTestResults"]
 >[0];
 
+/**
+ * @deprecated Use `GetTestResultsReturnItem` instead
+ */
 export type GetTestResultsResult = Awaited<
+  ReturnType<typeof TestResultService.getTestResults>
+>["data"][number];
+
+export type GetTestResultsReturnItem = Awaited<
   ReturnType<typeof TestResultService.getTestResults>
 >["data"][number];
 
 export type GetTestResultFilterValuesParams = Parameters<
   (typeof TestResultService)["getTestResultFilterValues"]
 >[0];
+
+export type TestResultUserTestResultReview =
+  GetTestResultsReturnItem["userTestResultReview"];
+export type TestResultPropertyReview = NonNullable<
+  GetTestResultsReturnItem["userPropertyReviews"]
+>[number];

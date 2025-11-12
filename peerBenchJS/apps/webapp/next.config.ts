@@ -1,17 +1,27 @@
 import type { NextConfig } from "next";
-import path from "path";
 
 const nextConfig: NextConfig = {
+  logging: {
+    incomingRequests: true,
+    fetches: {
+      fullUrl: true,
+      hmrRefreshes: true,
+    },
+  },
   devIndicators: false,
-  output: "standalone",
-  serverExternalPackages: ["hyparquet", "@supabase/supabase-js"],
-  outputFileTracingRoot: path.join(__dirname, "../.."),
   experimental: {
     serverActions: {
       bodySizeLimit: "1000mb",
     },
   },
   reactStrictMode: false,
+
+  turbopack: {
+    resolveAlias: {
+      fs: "node:fs",
+      path: "node:path",
+    },
+  },
 
   webpack: (config, { isServer }) => {
     if (!isServer) {

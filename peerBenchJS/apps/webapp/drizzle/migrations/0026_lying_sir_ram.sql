@@ -1,0 +1,2 @@
+ALTER TABLE "prompt_sets" ADD COLUMN "is_public" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "prompt_sets" ADD COLUMN "is_public_submissions_allowed" boolean DEFAULT false NOT NULL;

@@ -3,24 +3,23 @@
 import {
   JsonView,
   allExpanded,
-  darkStyles,
+  collapseAllNested,
   defaultStyles,
 } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
-import { useTheme } from "next-themes";
 
 export interface JSONViewProps {
   data: any;
+  collapsed?: boolean;
 }
 
-export function JSONView({ data }: JSONViewProps) {
-  const theme = useTheme();
+export function JSONView({ data, collapsed = false }: JSONViewProps) {
   return (
     <JsonView
       data={data}
-      shouldExpandNode={allExpanded}
+      shouldExpandNode={collapsed ? collapseAllNested : allExpanded}
       style={{
-        ...(theme.theme === "dark" ? darkStyles : defaultStyles),
+        ...defaultStyles,
         container: "child-fields-container",
       }}
     />

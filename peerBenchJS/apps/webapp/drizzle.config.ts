@@ -1,7 +1,17 @@
 import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
 
-config({ path: [".env", ".env.dev", ".env.prod"] });
+config({
+  quiet: true,
+  path: [
+    ".env.local",
+    ".env.dev",
+    ".env.development",
+    ".env.prod",
+    ".env.production",
+    ".env",
+  ],
+});
 
 export default defineConfig({
   schema: "./src/database/schema.ts",

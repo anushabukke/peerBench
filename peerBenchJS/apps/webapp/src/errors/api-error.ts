@@ -32,7 +32,7 @@ export class ApiError extends Error {
     return new ApiError(msg, 500, false, code);
   }
   static validationError(issues: z.ZodIssue[], code?: string) {
-    return new ApiError("Validation Error", 400, true, code, {
+    return new ApiError(`Validation error: ${issues[0]?.path.join(".")}: ${issues[0]?.message}`, 400, true, code, {
       issues,
     });
   }

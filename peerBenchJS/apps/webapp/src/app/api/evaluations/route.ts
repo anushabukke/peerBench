@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { EvaluationService } from "@/services/evaluation.service";
 import { z } from "zod";
-import { AuthResult } from "@/route-helpers/authenticate-request";
-import { withAuth } from "@/route-wrappers/with-auth";
+import { AuthResult } from "@/lib/route-helpers/authenticate-request";
+import { withAuth } from "@/lib/route-wrappers/with-auth";
 
 export const revalidate = 0;
 
@@ -33,7 +33,7 @@ async function getHandler(request: NextRequest) {
 
     if (!validationResult.success) {
       return NextResponse.json(
-        { message: validationResult.error.errors[0].message },
+        { message: validationResult.error.errors[0]?.message },
         { status: 400 }
       );
     }
@@ -41,11 +41,13 @@ async function getHandler(request: NextRequest) {
     const result = await EvaluationService.getEvaluationsList({
       page: validationResult.data.page,
       pageSize: validationResult.data.pageSize,
-      uploaderId: validationResult.data.uploaderId,
-      providerId: validationResult.data.providerId,
-      offerId: validationResult.data.offerId,
-      minScore: validationResult.data.minScore,
-      maxScore: validationResult.data.maxScore,
+      filters: {
+        uploaderId: validationResult.data.uploaderId,
+        providerId: validationResult.data.providerId,
+        offerId: validationResult.data.offerId,
+        minScore: validationResult.data.minScore,
+        maxScore: validationResult.data.maxScore,
+      },
     });
 
     return NextResponse.json(result);

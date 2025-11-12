@@ -1,24 +1,22 @@
 "use client";
 
-import { cn } from "@/lib/utils";
-import { EvaluationSource } from "@/types/evaluation-source";
+import { cn } from "@/utils/cn";
 import { ChevronDown } from "lucide-react";
 import { DateTime } from "luxon";
 import { formatMs, tryParseJson } from "@peerbench/sdk";
 import { useCallback, useMemo, useState, useEffect } from "react";
 import { ReviewButtons } from "./review-buttons";
-import {
-  TestResultReviewModal,
-  TestResultReviewModalProps,
-} from "./review-modal";
+import { ReviewModal } from "../modals/review-modal";
 import { TestResultProperty } from "./property";
 import { JSONView } from "../json-view";
 import { saveReview } from "@/lib/actions/save-review";
 import { toast } from "react-toastify";
 import { updateReview } from "@/lib/actions/update-review";
-import { GetTestResultsResult } from "@/services/test-result.service";
+import type { GetTestResultsReturnItem } from "@/services/test-result.service";
 import { type User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
+import { EvaluationSources } from "@/database/types";
+import { ReviewModalValue } from "../modals/review-modal";
 
 function TestResult({
   evaluationIndex,
@@ -30,7 +28,7 @@ function TestResult({
   evaluationIndex: number;
   testIndex: number;
   promptSetId?: number | null;
-  test: GetTestResultsResult;
+  test: GetTestResultsReturnItem;
   user: User | null;
 }) {
   const router = useRouter();
@@ -44,7 +42,7 @@ function TestResult({
   const [isExpanded, setIsExpanded] = useState(false);
   const [test, setTest] = useState(props.test);
   const [reviewToBeLoaded, setReviewToBeLoaded] = useState<
-    GetTestResultsResult["reviews"][number] | null
+    (ReviewModalValue & { id?: number }) | null
   >(null);
 
   // When a review is made, we want to keep that review id
@@ -52,33 +50,48 @@ function TestResult({
   // just because for getting review id.
   useEffect(() => setTest(test), [test]);
 
-  // Helper function to get review id for a property or the whole test result if available any
-  const getTestResultReviewId = useCallback(
+  // Helper function to get review data for a property or the whole test result if available any
+  const getTestResultReviewData = useCallback(
     (params?: { propertyKey?: string; promptReview?: boolean }) => {
       if (params?.promptReview) {
-        if (!test.promptReviewId) {
+        if (test.userPromptReview?.id === undefined) {
           return null;
         }
 
         return {
-          id: test.promptReviewId,
+          id: test.userPromptReview.id,
+          comment: test.userPromptReview.comment || "",
+          opinion: test.userPromptReview.opinion,
           property: null,
         };
       }
 
       // For whole test result review, look for review with null property
       if (!params?.propertyKey) {
-        return test.reviews?.find((review) => review.property === null) || null;
+        if (!test.userTestResultReview) return null;
+        return {
+          id: test.userTestResultReview.id,
+          comment: test.userTestResultReview.comment || "",
+          opinion: test.userTestResultReview.opinion,
+          property: null,
+        };
       }
 
       // For property-specific reviews, look for review with matching property
-      return (
-        test.reviews?.find(
-          (review) => review.property === params?.propertyKey
-        ) || null
+      const propertyReview = test.userPropertyReviews?.find(
+        (review) => review.property === params?.propertyKey
       );
+
+      if (!propertyReview) return null;
+
+      return {
+        id: propertyReview.id,
+        comment: propertyReview.comment || "",
+        opinion: propertyReview.opinion,
+        property: propertyReview.property,
+      };
     },
-    [test.reviews, test.promptReviewId]
+    [test.userPropertyReviews, test.userPromptReview, test.userTestResultReview]
   );
 
   const results = useMemo(() => {
@@ -93,7 +106,7 @@ function TestResult({
     if (
       test.result?.startedAt &&
       test.result?.finishedAt &&
-      test.result?.source === EvaluationSource.PeerBench
+      test.result?.source === EvaluationSources.PeerBench
     ) {
       arr.push([
         "Duration",
@@ -207,10 +220,10 @@ function TestResult({
       }
 
       setReviewTarget("testResult");
-      setReviewToBeLoaded(getTestResultReviewId());
+      setReviewToBeLoaded(getTestResultReviewData());
       setIsReviewModalOpen(true);
     },
-    [getTestResultReviewId, user, router]
+    [getTestResultReviewData, user, router]
   );
 
   const handlePropertyReviewClick = useCallback(
@@ -226,7 +239,7 @@ function TestResult({
           : "testResult";
       setReviewPropertyKey(propertyKey);
       setReviewToBeLoaded(
-        getTestResultReviewId({
+        getTestResultReviewData({
           propertyKey,
           promptReview: target === "prompt",
         })
@@ -234,7 +247,7 @@ function TestResult({
       setReviewTarget(target);
       setIsReviewModalOpen(true);
     },
-    [getTestResultReviewId, user, router]
+    [getTestResultReviewData, user, router]
   );
 
   const handleReviewModalOpenChange = useCallback((isOpen: boolean) => {
@@ -245,55 +258,90 @@ function TestResult({
     setIsReviewModalOpen(false);
   }, []);
 
-  const handleReviewModalOnSubmitClick = useCallback(
-    async (params: Parameters<TestResultReviewModalProps["onSubmit"]>[0]) => {
-      // Update the review
-      if (params.reviewId !== undefined) {
-        await updateReview({
-          reviewId: params.reviewId,
-          comment: params.text,
-          flags: params.flags.map((option) => ({
-            value: option.value,
-            opinion: option.opinion || params.opinion,
-          })),
-          opinion: params.opinion,
-          property: params.propertyKey,
-          promptId: params.promptId,
-          testResultId: params.testResultId,
-        });
-      } else {
-        // Insert a new review
-        const review = await saveReview({
-          comment: params.text,
-          flags: params.flags.map((option) => ({
-            value: option.value,
-            opinion: option.opinion || params.opinion,
-          })),
-          opinion: params.opinion,
-          promptId: params.promptId,
-          property: params.propertyKey,
-          testResultId: params.testResultId,
-        });
+  const handleReviewChange = useCallback((review: ReviewModalValue) => {
+    setReviewToBeLoaded(review);
+  }, []);
 
-        // Since this is a new review, update the test object's review id
-        setTest((prev) => ({
-          ...prev,
-          promptReviewId: params.promptId ? review.id : prev.promptReviewId,
-          reviews: [
-            ...prev.reviews,
-            {
-              id: review.id,
-              property: "property" in review ? review.property : null,
-            },
-          ],
-        }));
-      }
+  const handleReviewModalOnSubmitClick = useCallback(async () => {
+    if (!reviewToBeLoaded) return;
 
-      setIsReviewModalOpen(false);
-      toast.success("Review saved successfully");
-    },
-    []
-  );
+    // Update the review
+    if (reviewToBeLoaded.id !== undefined) {
+      await updateReview({
+        reviewId: reviewToBeLoaded.id,
+        comment: reviewToBeLoaded.comment,
+        flags: [], // No flags in the new modal
+        opinion: reviewToBeLoaded.opinion!,
+        property:
+          reviewTarget === "testResult"
+            ? reviewPropertyKey || undefined
+            : undefined,
+        promptId: reviewTarget === "prompt" ? test.result.promptId : undefined,
+        testResultId: reviewTarget === "testResult" ? test.id : undefined,
+      });
+    } else {
+      // Insert a new review
+      const review = await saveReview({
+        comment: reviewToBeLoaded.comment,
+        flags: [], // No flags in the new modal
+        opinion: reviewToBeLoaded.opinion!,
+        promptId: reviewTarget === "prompt" ? test.result.promptId : undefined,
+        property:
+          reviewTarget === "testResult"
+            ? reviewPropertyKey || undefined
+            : undefined,
+        testResultId: reviewTarget === "testResult" ? test.id : undefined,
+      });
+
+      // Since this is a new review, update the test object's review id
+      setTest((prev) => ({
+        ...prev,
+        userPromptReview:
+          reviewTarget === "prompt"
+            ? {
+                id: review.id,
+                comment: review.comment || "",
+                opinion: review.opinion!,
+                createdAt: new Date(),
+                flags: [],
+              }
+            : prev.userPromptReview,
+        userTestResultReview:
+          reviewTarget === "testResult" && !reviewPropertyKey
+            ? {
+                id: review.id,
+                comment: review.comment || "",
+                opinion: review.opinion!,
+                createdAt: new Date(),
+                flags: [],
+              }
+            : prev.userTestResultReview,
+        userPropertyReviews:
+          reviewTarget === "testResult" && reviewPropertyKey
+            ? [
+                ...(prev.userPropertyReviews || []),
+                {
+                  id: review.id,
+                  comment: review.comment || "",
+                  opinion: review.opinion!,
+                  property: reviewPropertyKey,
+                  createdAt: new Date(),
+                  flags: [],
+                },
+              ]
+            : prev.userPropertyReviews,
+      }));
+    }
+
+    setIsReviewModalOpen(false);
+    toast.success("Review saved successfully");
+  }, [
+    reviewToBeLoaded,
+    reviewTarget,
+    reviewPropertyKey,
+    test.id,
+    test.result.promptId,
+  ]);
 
   return (
     <div
@@ -389,21 +437,11 @@ function TestResult({
         )}
       </div>
 
-      <TestResultReviewModal
-        title={reviewToBeLoaded !== null ? "Edit Review" : "Submit a Review"}
-        description={
-          reviewToBeLoaded !== null
-            ? "You have already submitted a review. Edit your existing review."
-            : "Please give your detailed feedback about the content"
-        }
-        isOpen={isReviewModalOpen}
-        testResultId={reviewTarget === "testResult" ? test.id : undefined}
-        promptId={reviewTarget === "prompt" ? test.result.promptId : undefined}
-        reviewId={reviewToBeLoaded?.id}
-        propertyKey={
-          reviewTarget === "testResult" ? reviewPropertyKey : undefined
-        }
+      <ReviewModal
+        open={isReviewModalOpen}
+        review={reviewToBeLoaded || undefined}
         onOpenChange={handleReviewModalOpenChange}
+        onReviewChange={handleReviewChange}
         onCancel={handleReviewModalOnCancelClick}
         onSubmit={handleReviewModalOnSubmitClick}
       />

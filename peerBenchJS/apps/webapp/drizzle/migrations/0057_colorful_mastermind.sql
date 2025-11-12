@@ -1,0 +1,3 @@
+ALTER TABLE "models" ALTER COLUMN "elo" SET DEFAULT 1000;
+
+UPDATE "models" SET "elo" = 1000 WHERE "elo" IS NULL;

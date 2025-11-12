@@ -1,0 +1,1 @@
+ALTER TABLE "prompt_set_invitations" ADD COLUMN "is_reusable" boolean DEFAULT false NOT NULL;

@@ -2,8 +2,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 
-export const fetchCache = "force-no-store";
-
 export default function DashboardPage() {
   return (
     <main className="min-h-screen">
@@ -57,7 +55,7 @@ export default function DashboardPage() {
               </p>
               <div className="w-full justify-center flex">
                 <Button asChild variant="default" size="default">
-                  <Link href="/explore/prompts">Explore Prompts</Link>
+                  <Link href="/prompts">Explore Prompts</Link>
                 </Button>
               </div>
             </CardContent>
@@ -86,7 +84,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-5">
               <p>
-                View and manage your uploaded prompt sets, track their usage,
+                View and manage your uploaded benchmarks, track their usage,
                 and monitor feedback from the peers.
               </p>
               <div className="w-full justify-center flex">

@@ -1,0 +1,2 @@
+ALTER TABLE "hash_registrations" ADD CONSTRAINT "hash_registrations_cid_sha256_unique" UNIQUE("cid","sha256");--> statement-breakpoint
+ALTER TABLE "raw_data_registrations" ADD CONSTRAINT "raw_data_registrations_cid_sha256_unique" UNIQUE("cid","sha256");

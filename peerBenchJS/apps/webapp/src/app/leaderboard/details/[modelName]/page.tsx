@@ -1,284 +1,103 @@
-import { EvaluationsTable } from "./components/EvaluationsTable";
-import { EvaluationService } from "@/services/evaluation.service";
-import Filters from "./components/Filters";
-import { PageContextProvider, FilterOptionType } from "./context";
-import { LeaderboardService } from "@/services/leaderboard.service";
-import { DateTime } from "luxon";
-import { capitalize } from "@/utils/capitalize";
-
-const formatStrategy = (strategy: string) => {
-  return strategy
-    .split("-")
-    .map((word) => capitalize(word))
-    .join(" ");
-};
-
-// Helper function to map filter strategies
-const mapFilterStrategies = (strategies: string[]): FilterOptionType[] => {
-  return strategies.length > 1
-    ? strategies.map((strategy) => ({
-        value: strategy,
-        label: formatStrategy(strategy),
-      }))
-    : [];
-};
-
-// Helper functions for parsing search params
-const parseStringParam = (value: string | undefined): string | undefined => {
-  return value !== undefined ? decodeURIComponent(value) : undefined;
-};
-
-const parseNumberParam = (
-  value: string | undefined,
-  defaultValue: number
-): number => {
-  return value !== undefined ? Number(value) : defaultValue;
-};
-
-const parseOptionalNumberParam = (
-  value: string | undefined
-): number | undefined => {
-  return value !== undefined ? Number(value) : undefined;
-};
+import { z } from "zod";
+import Filters from "./components/filters";
+import Stats from "./components/stats";
+import { checkValidation } from "@/lib/route-helpers/check-validation";
+import EvaluationsTable from "./components/evaluations-table";
+import EvaluationsTableSkeleton from "./components/evaluations-table/skeleton";
+import { Suspense } from "react";
+import StatsSkeleton from "./components/stats/skeleton";
 
 export default async function Page(props: {
   params: Promise<{ modelName: string }>;
   searchParams: Promise<{
+    contextType?: string;
+    context?: string;
+    promptType?: string;
+    provider?: string;
     page?: string;
     pageSize?: string;
-    protocol?: string;
-    promptSet?: string;
-    provider?: string;
-    promptType?: string;
   }>;
 }) {
-  const { modelName } = await props.params;
-  const model = decodeURIComponent(modelName);
+  const model = decodeURIComponent(await props.params.then((p) => p.modelName));
+  const searchParams = checkValidation(
+    z
+      .object({
+        contextType: z.string().optional(),
+        context: z.string().optional(),
+        page: z.coerce.number().optional().default(1),
+        pageSize: z.coerce
+          .number()
+          .optional()
+          .default(10)
+          .transform((val) => (val > 500 ? 500 : val)), // Limit to 500
+        promptType: z.string().optional(),
+        provider: z.string().optional(),
+      })
+      .transform((data) => {
+        if (data.contextType === "prompt-set") {
+          const promptSetId = parseInt(data.context || "");
+          if (!isNaN(promptSetId)) {
+            return {
+              ...data,
+              contextType: "prompt-set",
+              promptSetId,
+              protocolAddress: undefined,
+            };
+          }
+        }
 
-  const awaitedSearchParams = await props.searchParams;
+        if (data.contextType === "protocol") {
+          return {
+            ...data,
+            contextType: "protocol",
+            protocolAddress: data.context,
+            promptSetId: undefined,
+          };
+        }
 
-  // Parse search params using helper functions
-  const page = parseNumberParam(awaitedSearchParams.page, 1);
-  const pageSize = parseNumberParam(awaitedSearchParams.pageSize, 10);
-  const protocolName = parseStringParam(awaitedSearchParams.protocol);
-  const promptSetId = parseOptionalNumberParam(awaitedSearchParams.promptSet);
-  const provider = parseStringParam(awaitedSearchParams.provider);
-  const promptType = parseStringParam(awaitedSearchParams.promptType);
-
-  const [evaluations, filters, leaderboardItem] = await Promise.all([
-    EvaluationService.getEvaluationsList({
-      model,
-      page,
-      pageSize,
-      promptSetId,
-      protocolName,
-      provider,
-      promptType,
-    }),
-    EvaluationService.getEvaluationsListFilterValues({
-      model,
-    }),
-    LeaderboardService.getLeaderboardItem({
-      model,
-      promptSetId,
-      context: protocolName,
-    }),
-  ]);
-
-  const providers = filters.providers.map((provider) => ({
-    value: provider,
-    label: provider,
-  }));
-  const contexts = [
-    ...filters.promptSets.map((promptSet) => ({
-      value: promptSet.id.toString(),
-      label: promptSet.title,
-      type: "promptSet" as const,
-    })),
-    ...filters.protocols.map((protocol) => ({
-      // NOTE: We assume that the protocol name is unique
-      value: protocol.name,
-      label: protocol.name,
-      type: "protocol" as const,
-    })),
-  ];
-
-  const initialProviderFilter = providers.find((p) => p.value === provider);
-  const initialContext = contexts.find(
-    (context) =>
-      (context.type === "promptSet" &&
-        context.value === promptSetId?.toString()) ||
-      (context.type === "protocol" && context.value === protocolName)
+        return {
+          ...data,
+          protocolAddress: undefined,
+          promptSetId: undefined,
+        };
+      })
+      .safeParse(await props.searchParams)
   );
 
-  const availableLeaderboards = Object.keys(leaderboardItem);
-  const leaderboardName =
-    availableLeaderboards.length > 1 ? undefined : availableLeaderboards[0];
-  const leaderboardInfo = leaderboardName
-    ? leaderboardItem[leaderboardName]
-    : undefined;
-  const renderLeaderboardInfo = () => {
-    if (!initialContext || !leaderboardInfo) {
-      return null;
-    }
-
-    const accuracyAvgScoreText =
-      leaderboardInfo.accuracy !== null ? "Accuracy" : "Avg. Score";
-    const accuracyAvgScoreValue =
-      leaderboardInfo.accuracy !== null
-        ? `${(leaderboardInfo.accuracy * 100).toFixed(2)}%`
-        : leaderboardInfo.avgScore?.toFixed(2);
-    const recentEvaluation = DateTime.fromJSDate(
-      leaderboardInfo.recentEvaluation
-    );
-    const totalTestsPerformedText =
-      leaderboardInfo.accuracy !== null
-        ? "Total Prompts Sent"
-        : "Total Tests Performed";
-
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                {accuracyAvgScoreText}
-              </p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                {accuracyAvgScoreValue}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-blue-600 dark:text-blue-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Last Updated
-              </p>
-              <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {recentEvaluation.toFormat("MMM DD")}
-              </p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {recentEvaluation.toRelative()}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-green-600 dark:text-green-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                Total Evaluations
-              </p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                {leaderboardInfo.totalEvaluations}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-purple-600 dark:text-purple-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
-                {totalTestsPerformedText}
-              </p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                {leaderboardInfo.totalTestsPerformed}
-              </p>
-            </div>
-            <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/20 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-6 h-6 text-amber-600 dark:text-amber-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   return (
-    <PageContextProvider
-      contexts={contexts}
-      providers={providers}
-      promptTypes={mapFilterStrategies(filters.promptTypes)}
-      initialContextFilter={initialContext?.value}
-      initialProviderFilter={initialProviderFilter?.value}
-      initialPromptTypeFilter={promptType}
-    >
-      <div className="container mx-auto py-8 space-y-4">
-        <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-gray-100">
-          {model}
-        </h1>
-        <div className="mb-8">{renderLeaderboardInfo()}</div>
-        <Filters />
-        <EvaluationsTable
-          evaluations={evaluations.results}
-          currentPage={page}
-          currentPageSize={pageSize}
-          modelName={model}
-          total={evaluations.total}
-        />
+    <div className="container mx-auto py-8 space-y-4">
+      <h1 className="text-3xl font-bold mb-6 text-gray-900 dark:text-gray-100">
+        {model}
+      </h1>
+      <div className="mb-8">
+        <Suspense
+          key={`${searchParams?.promptSetId}-${searchParams?.protocolAddress}`}
+          fallback={<StatsSkeleton />}
+        >
+          <Stats
+            modelName={model}
+            promptSetId={searchParams?.promptSetId}
+            protocolAddress={searchParams?.protocolAddress}
+          />
+        </Suspense>
       </div>
-    </PageContextProvider>
+      <Filters modelName={model} />
+      <Suspense
+        key={`${searchParams?.page}-${searchParams?.pageSize}-${searchParams?.promptSetId}-${searchParams?.protocolAddress}-${searchParams?.promptType}-${searchParams?.provider}`}
+        fallback={
+          <EvaluationsTableSkeleton pageSize={searchParams?.pageSize} />
+        }
+      >
+        <EvaluationsTable
+          modelName={model}
+          promptSetId={searchParams?.promptSetId}
+          protocolAddress={searchParams?.protocolAddress}
+          page={searchParams?.page}
+          pageSize={searchParams?.pageSize}
+          promptType={searchParams?.promptType}
+          provider={searchParams?.provider}
+        />
+      </Suspense>
+    </div>
   );
 }

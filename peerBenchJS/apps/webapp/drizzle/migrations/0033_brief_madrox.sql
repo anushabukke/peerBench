@@ -1,0 +1,2 @@
+ALTER TABLE "prompt_set_invitations" ADD COLUMN "created_by" uuid NOT NULL;--> statement-breakpoint
+ALTER TABLE "prompt_set_invitations" ADD CONSTRAINT "prompt_set_invitations_created_by_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "auth"."users"("id") ON DELETE cascade ON UPDATE cascade;

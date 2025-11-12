@@ -101,7 +101,6 @@ class PreloaderService {
       // Preload in priority order with parallel execution where possible
       const preloadPromises = [
         this.preloadPeersData(),
-        this.preloadLeaderboardData(),
         this.preloadInspectData(),
         this.preloadExploreData(),
         this.preloadUploadData(),
@@ -184,38 +183,6 @@ class PreloaderService {
     } catch (error) {
       if (window.extra_logging) {
         console.error('❌ [PRELOADER] Failed to preload peers data:', error);
-      }
-    }
-  }
-
-  // Preload leaderboard data using API endpoint
-  private async preloadLeaderboardData(): Promise<void> {
-    const startTime = performance.now();
-    
-    try {
-      if (window.extra_logging) {
-        console.log('🏆 [PRELOADER] Starting leaderboard data preload...');
-      }
-      
-      const response = await fetch('/api/v1/leaderboard');
-      
-      if (response.ok) {
-        const leaderboards = await response.json();
-        this.cache.leaderboard = leaderboards;
-        
-        const endTime = performance.now();
-        if (window.extra_logging) {
-          console.log('✅ [PRELOADER] Leaderboard data preloaded in', (endTime - startTime).toFixed(2), 'ms');
-          console.log('🏆 [PRELOADER] Leaderboard count:', leaderboards.length);
-        }
-      } else {
-        if (window.extra_logging) {
-          console.error('❌ [PRELOADER] Failed to fetch leaderboard data:', response.status);
-        }
-      }
-    } catch (error) {
-      if (window.extra_logging) {
-        console.error('❌ [PRELOADER] Failed to preload leaderboard data:', error);
       }
     }
   }
@@ -313,10 +280,10 @@ class PreloaderService {
     
     try {
       if (window.extra_logging) {
-        console.log('🎨 [PRELOADER] Starting prompt sets data preload...');
+        console.log('🎨 [PRELOADER] Starting benchmarks data preload...');
       }
       
-      const response = await fetch('/api/v1/prompt-sets');
+      const response = await fetch('/api/v2/prompt-sets');
       
       if (response.ok) {
         const promptSets = await response.json();
@@ -324,17 +291,17 @@ class PreloaderService {
         
         const endTime = performance.now();
         if (window.extra_logging) {
-          console.log('✅ [PRELOADER] Prompt sets data preloaded in', (endTime - startTime).toFixed(2), 'ms');
-          console.log('🎨 [PRELOADER] Prompt sets count:', promptSets.length);
+          console.log('✅ [PRELOADER] Benchmarks data preloaded in', (endTime - startTime).toFixed(2), 'ms');
+          console.log('🎨 [PRELOADER] Benchmarks count:', promptSets.length);
         }
       } else {
         if (window.extra_logging) {
-          console.error('❌ [PRELOADER] Failed to fetch prompt sets data:', response.status);
+          console.error('❌ [PRELOADER] Failed to fetch benchmarks data:', response.status);
         }
       }
     } catch (error) {
       if (window.extra_logging) {
-        console.error('❌ [PRELOADER] Failed to preload prompt sets data:', error);
+        console.error('❌ [PRELOADER] Failed to preload benchmarks data:', error);
       }
     }
   }

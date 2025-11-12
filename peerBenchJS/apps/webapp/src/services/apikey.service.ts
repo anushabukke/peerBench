@@ -1,0 +1,132 @@
+import { withTxOrDb, withTxOrTx } from "@/database/helpers";
+import { apiKeysTable } from "@/database/schema";
+import { ApiKeyProvider, ApiKeyProviders } from "@/database/types";
+import { ApiError } from "@/errors/api-error";
+import { DbOptions } from "@/types/db";
+import { tryReadResponse } from "@/utils/try-read-response";
+import { and, eq } from "drizzle-orm";
+
+const OPENROUTER_API_KEY_PROVISIONING_URL = "https://openrouter.ai/api/v1/keys";
+const OPENROUTER_API_KEY_USAGE_LIMIT = 1; // $1
+const OPENROUTER_API_KEY_USAGE_LIMIT_RESET = "monthly";
+
+export class ApiKeyService {
+  static async insertApiKey(
+    data: {
+      key: string;
+      assignedUserId: string;
+      provider: ApiKeyProvider;
+      metadata?: any;
+    },
+    options?: DbOptions
+  ) {
+    return withTxOrDb(async (tx) => {
+      const [apiKey] = await tx
+        .insert(apiKeysTable)
+        .values({
+          key: data.key,
+          assignedUserId: data.assignedUserId,
+          provider: data.provider,
+          metadata: data.metadata,
+        })
+        .returning();
+
+      return apiKey!;
+    }, options?.tx);
+  }
+
+  static async getApiKeyByAssignedUserId(
+    options: DbOptions & {
+      assignedUserId: string;
+      provider: ApiKeyProvider;
+    }
+  ) {
+    return withTxOrDb(async (tx) => {
+      const [apiKey] = await tx
+        .select()
+        .from(apiKeysTable)
+        .where(
+          and(
+            eq(apiKeysTable.assignedUserId, options.assignedUserId),
+            eq(apiKeysTable.provider, options.provider)
+          )
+        )
+        .limit(1);
+
+      return apiKey;
+    }, options?.tx);
+  }
+
+  static async upsertOpenRouterApiKey(
+    data: { assignedUserId: string },
+    options?: DbOptions
+  ) {
+    return withTxOrTx(async (tx) => {
+      const existingApiKey = await this.getApiKeyByAssignedUserId({
+        assignedUserId: data.assignedUserId,
+        provider: ApiKeyProviders.openrouter,
+        tx,
+      });
+
+      if (existingApiKey) {
+        return existingApiKey;
+      }
+
+      // Create an API key for the user using the OpenRouter provider
+      const response = await fetch(OPENROUTER_API_KEY_PROVISIONING_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.OPENROUTER_PROVISIONING_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: `peerBench-user-${data.assignedUserId}`,
+          limit: OPENROUTER_API_KEY_USAGE_LIMIT,
+          limit_reset: OPENROUTER_API_KEY_USAGE_LIMIT_RESET,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(await tryReadResponse(response));
+        throw ApiError.server(`The API key provisioning failed`);
+      }
+
+      const keyData: OpenRouterApiKeyProvisioningResponse =
+        await response.json();
+
+      return this.insertApiKey(
+        {
+          key: keyData.key,
+          assignedUserId: data.assignedUserId,
+          provider: ApiKeyProviders.openrouter,
+          metadata: keyData.data,
+        },
+        { tx }
+      );
+    }, options?.tx);
+  }
+}
+
+export type OpenRouterApiKeyProvisioningResponse = {
+  key: string;
+  data: {
+    hash: string;
+    name: string;
+    label: string;
+    disabled: boolean;
+    limit: number;
+    limit_remaining: number;
+    limit_reset: string;
+    include_byok_in_limit: boolean;
+    usage: number;
+    usage_daily: number;
+    usage_weekly: number;
+    usage_monthly: number;
+    byok_usage: number;
+    byok_usage_daily: number;
+    byok_usage_weekly: number;
+    byok_usage_monthly: number;
+    created_at: string;
+    updated_at: string | null;
+  };
+};

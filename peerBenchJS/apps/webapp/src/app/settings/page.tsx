@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "react-toastify";
 import {
   Download,
@@ -24,18 +25,24 @@ import { validateUserLocalKey } from "@/validation/user-local-key";
 import { userLocalKeyStorage } from "@/utils/user-local-key-storage";
 import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
 import { useSearchParams } from "next/navigation";
-import { getUser } from "@/lib/actions/auth";
 import {
   storeUserKey,
   signUserUuidWithPrivateKey,
   getUserKeys,
   deleteUserKeyById,
 } from "@/services/key.service";
+import { ensureHttpProtocol } from "@/utils/url";
 import { OrganizationClientService } from "@/services/organization.client";
 import {
   isUserAffiliatedWithOrg,
   addUserToOrg,
 } from "@/services/org-people.service";
+import { SETTING_EXTRA, SETTING_OPENROUTER_API_KEY } from "@/lib/settings";
+import { tryParseJson } from "@peerbench/sdk";
+import { useSelector, useDispatch } from "react-redux";
+import { RootState, AppDispatch } from "@/redux/store";
+import { updateProfile } from "@/redux/slices/userSlice";
+import { LoadingPage } from "@/components/ui/loading-page";
 
 export const fetchCache = "force-no-store";
 
@@ -59,8 +66,8 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const isDebugMode = searchParams.get("debug") === "1";
 
+  const [activeAPIKey, setActiveAPIKey] = useState("");
   const [apiKey, setApiKey] = useState("");
-  const [nearAiToken, setNearAiToken] = useState("");
 
   const [userLocalKey, setUserLocalKey] = useState("");
   const [showUserLocalKey, setShowUserLocalKey] = useState(false);
@@ -82,45 +89,38 @@ export default function SettingsPage() {
   const [isAddingAffiliation, setIsAddingAffiliation] = useState(false);
 
   // User profile state
-  const [profile, setProfile] = useState<any>(null);
-  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
 
-  useEffect(() => {
-    // Load current user
-    const loadUser = async () => {
-      const user = await getUser();
-      setCurrentUser(user);
-    };
-    loadUser();
+  // Extra functionality state
+  const [extraEnabled, setExtraEnabled] = useState(false);
 
-    // Load user profile
-    const loadProfile = async () => {
-      setIsLoadingProfile(true);
-      try {
-        const response = await fetch("/api/v1/profile");
-        if (response.ok) {
-          const profileData = await response.json();
-          setProfile(profileData);
-        }
-      } catch (error) {
-        console.error("Error loading profile:", error);
-      } finally {
-        setIsLoadingProfile(false);
-      }
-    };
-    loadProfile();
+  // Getting user from a global state
+  const { user, profileData, status } = useSelector(
+    (state: RootState) => state.userSlice
+  );
+  const dispatch = useDispatch<AppDispatch>();
+
+  useEffect(() => {
+    if (status === "success") {
+      setCurrentUser(user);
+    }
+  }, [status, user]);
+  useEffect(() => {
+    setCurrentUser(user);
 
     // Load saved API key from localStorage
-    const savedApiKey = localStorage.getItem("openrouter_api_key");
+    const savedApiKey = tryParseJson(
+      localStorage.getItem("openrouter_api_key") || ""
+    );
     if (savedApiKey) {
-      setApiKey(savedApiKey);
+      setActiveAPIKey(savedApiKey);
     }
-    // Load saved Near AI token from localStorage
-    const savedNearAiToken = localStorage.getItem("nearai_auth_token");
-    if (savedNearAiToken) {
-      setNearAiToken(savedNearAiToken);
+
+    // Load saved extra setting from localStorage
+    const savedExtraEnabled = tryParseJson(localStorage.getItem("extra") || "");
+    if (savedExtraEnabled === true) {
+      setExtraEnabled(true);
     }
     // Load saved user local key from localStorage only in debug mode
     if (isDebugMode) {
@@ -437,21 +437,9 @@ export default function SettingsPage() {
     };
 
     try {
-      const response = await fetch("/api/v1/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profileData),
-      });
-
-      if (response.ok) {
-        const updatedProfile = await response.json();
-        setProfile(updatedProfile);
-        setProfileMessage("Profile updated successfully!");
-        toast.success("Profile updated successfully!");
-      } else {
-        setProfileMessage("Failed to update profile");
-        toast.error("Failed to update profile");
-      }
+      await dispatch(updateProfile(profileData)).unwrap();
+      setProfileMessage("Profile updated successfully!");
+      toast.success("Profile updated successfully!");
     } catch (error) {
       console.error("Error updating profile:", error);
       setProfileMessage("Error updating profile");
@@ -461,14 +449,22 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSave = async () => {
+  const handleExtraChange = (checked: boolean) => {
+    setExtraEnabled(checked);
+    localStorage.setItem("extra", checked.toString());
+  };
+
+  const handleSave = async (newApiKey?: string) => {
     setIsLoading(true);
     try {
       // Save API key to localStorage
-      localStorage.setItem("openrouter_api_key", apiKey);
+      localStorage.setItem(
+        SETTING_OPENROUTER_API_KEY.name,
+        JSON.stringify(newApiKey || apiKey)
+      );
 
-      // Save Near AI token to localStorage
-      localStorage.setItem("nearai_auth_token", nearAiToken);
+      // Save extra setting to localStorage
+      localStorage.setItem(SETTING_EXTRA.name, JSON.stringify(extraEnabled));
 
       // Validate user local key only in debug mode
       if (isDebugMode && userLocalKey.trim()) {
@@ -481,12 +477,19 @@ export default function SettingsPage() {
       }
 
       toast.success("Settings saved successfully");
+
+      // TODO: Just a temporary solution
+      window.location.reload();
     } catch {
       toast.error("Failed to save settings");
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (status === "loading") {
+    return <LoadingPage />;
+  }
 
   return (
     <main className="container mx-auto py-8">
@@ -499,289 +502,285 @@ export default function SettingsPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {isLoadingProfile ? (
-            <div className="text-center py-4">Loading profile...</div>
-          ) : (
-            <form onSubmit={handleProfileSave} className="space-y-4">
-              {/* User Email and Organization Affiliation */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* User Email (Read-only) */}
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    value={currentUser?.email || ""}
-                    disabled
-                    className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-600"
-                  />
-                </div>
-
-                {/* Organization Affiliation */}
-                {organization && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <label className="block text-sm font-medium text-blue-800 mb-2">
-                      Organization Affiliation
-                    </label>
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-blue-800">
-                        {organization.name}
-                      </p>
-                      {organization.country && (
-                        <p className="text-xs text-blue-600">
-                          {organization.country}
-                          {organization.alpha_two_code &&
-                            ` (${organization.alpha_two_code})`}
-                        </p>
-                      )}
-                      {organization.web_page && (
-                        <p className="text-xs text-blue-600">
-                          <a
-                            href={organization.web_page}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="hover:underline"
-                          >
-                            {organization.web_page}
-                          </a>
-                        </p>
-                      )}
-
-                      <div className="pt-2">
-                        {isCheckingAffiliation ? (
-                          <div className="text-sm text-gray-500">
-                            Checking affiliation status...
-                          </div>
-                        ) : isAffiliated ? (
-                          <div className="flex items-center text-sm text-green-600">
-                            <svg
-                              className="h-4 w-4 mr-2"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                            You are affiliated with this organization
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-3">
-                            <Button
-                              onClick={addAffiliation}
-                              disabled={isAddingAffiliation}
-                              variant="outline"
-                              size="sm"
-                              className="text-blue-600 border-blue-600 hover:bg-blue-50"
-                            >
-                              {isAddingAffiliation
-                                ? "Adding..."
-                                : "Confirm Affiliation"}
-                            </Button>
-                            <p className="text-sm text-gray-600">
-                              Click to confirm you are affiliated with this
-                              organization
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Organization Lookup Loading */}
-                {isLookingUpOrg && (
-                  <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Organization Affiliation
-                    </label>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <svg
-                        className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-400"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                      >
-                        <circle
-                          className="opacity-25"
-                          cx="12"
-                          cy="12"
-                          r="10"
-                          stroke="currentColor"
-                          strokeWidth="4"
-                        ></circle>
-                        <path
-                          className="opacity-75"
-                          fill="currentColor"
-                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                        ></path>
-                      </svg>
-                      Looking up your organization...
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* User UUID (Read-only) */}
+          <form onSubmit={handleProfileSave} className="space-y-4">
+            {/* User Email and Organization Affiliation */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* User Email (Read-only) */}
               <div className="p-4 bg-gray-50 rounded-lg">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  User ID (UUID)
+                  Email Address
                 </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={currentUser?.id || ""}
-                    disabled
-                    className="flex-1 px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-600 font-mono text-sm"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (currentUser?.id) {
-                        navigator.clipboard.writeText(currentUser.id);
-                        toast.success("UUID copied to clipboard");
-                      }
-                    }}
-                    disabled={!currentUser?.id}
-                    title="Copy UUID to clipboard"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  Unique identifier for your account
-                </p>
-              </div>
-
-              {/* Display Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Display Name
-                </label>
-                <Input
-                  name="displayName"
-                  type="text"
-                  defaultValue={profile?.displayName || ""}
-                  placeholder="Enter your display name"
-                  className="max-w-md"
+                <input
+                  type="email"
+                  value={currentUser?.email || ""}
+                  disabled
+                  className="w-full px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-600"
                 />
               </div>
 
-              {/* Website */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Website
-                </label>
-                <Input
-                  name="website"
-                  type="url"
-                  defaultValue={profile?.website || ""}
-                  placeholder="https://yourwebsite.com"
-                  className="max-w-md"
-                />
-              </div>
-
-              {/* GitHub */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                  <Github className="h-4 w-4" />
-                  GitHub
-                </label>
-                <Input
-                  name="github"
-                  type="url"
-                  defaultValue={profile?.github || ""}
-                  placeholder="https://github.com/username"
-                  className="max-w-md"
-                />
-              </div>
-
-              {/* Social Media Section */}
-              <div className="border-t pt-4">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">
-                  Social Media
-                </h3>
-
-                {/* Bluesky */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4" />
-                    Bluesky
+              {/* Organization Affiliation */}
+              {organization && (
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <label className="block text-sm font-medium text-blue-800 mb-2">
+                    Organization Affiliation
                   </label>
-                  <Input
-                    name="bluesky"
-                    type="text"
-                    defaultValue={profile?.bluesky || ""}
-                    placeholder="@username.bsky.social"
-                    className="max-w-md"
-                  />
-                </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-blue-800">
+                      {organization.name}
+                    </p>
+                    {organization.country && (
+                      <p className="text-xs text-blue-600">
+                        {organization.country}
+                        {organization.alpha_two_code &&
+                          ` (${organization.alpha_two_code})`}
+                      </p>
+                    )}
+                    {organization.web_page && (
+                      <p className="text-xs text-blue-600">
+                        <a
+                          href={ensureHttpProtocol(organization.web_page)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="hover:underline"
+                        >
+                          {organization.web_page}
+                        </a>
+                      </p>
+                    )}
 
-                {/* Mastodon */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4" />
-                    Mastodon
-                  </label>
-                  <Input
-                    name="mastodon"
-                    type="text"
-                    defaultValue={profile?.mastodon || ""}
-                    placeholder="@username@mastodon.social"
-                    className="max-w-md"
-                  />
-                </div>
-
-                {/* Twitter */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                    <MessageCircle className="h-4 w-4" />
-                    Twitter
-                  </label>
-                  <Input
-                    name="twitter"
-                    type="text"
-                    defaultValue={profile?.twitter || ""}
-                    placeholder="@username"
-                    className="max-w-md"
-                  />
-                </div>
-              </div>
-
-              {/* Profile Message */}
-              {profileMessage && (
-                <div
-                  className={`p-3 rounded-md ${
-                    profileMessage.includes("successfully")
-                      ? "bg-green-50 text-green-800 border border-green-200"
-                      : "bg-red-50 text-red-800 border border-red-200"
-                  }`}
-                >
-                  {profileMessage}
+                    <div className="pt-2">
+                      {isCheckingAffiliation ? (
+                        <div className="text-sm text-gray-500">
+                          Checking affiliation status...
+                        </div>
+                      ) : isAffiliated ? (
+                        <div className="flex items-center text-sm text-green-600">
+                          <svg
+                            className="h-4 w-4 mr-2"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                          You are affiliated with this organization
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3">
+                          <Button
+                            onClick={addAffiliation}
+                            disabled={isAddingAffiliation}
+                            variant="outline"
+                            size="sm"
+                            className="text-blue-600 border-blue-600 hover:bg-blue-50"
+                          >
+                            {isAddingAffiliation
+                              ? "Adding..."
+                              : "Confirm Affiliation"}
+                          </Button>
+                          <p className="text-sm text-gray-600">
+                            Click to confirm you are affiliated with this
+                            organization
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* Profile Save Button */}
-              <div className="flex justify-end">
+              {/* Organization Lookup Loading */}
+              {isLookingUpOrg && (
+                <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Organization Affiliation
+                  </label>
+                  <div className="flex items-center text-sm text-gray-500">
+                    <svg
+                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-400"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Looking up your organization...
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* User UUID (Read-only) */}
+            <div className="p-4 bg-gray-50 rounded-lg">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                User ID (UUID)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={currentUser?.id || ""}
+                  disabled
+                  className="flex-1 px-3 py-2 bg-gray-100 border border-gray-300 rounded-md text-gray-600 font-mono text-sm"
+                />
                 <Button
-                  type="submit"
-                  disabled={isSavingProfile}
-                  variant="default"
-                  size="default"
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (currentUser?.id) {
+                      navigator.clipboard.writeText(currentUser.id);
+                      toast.success("UUID copied to clipboard");
+                    }
+                  }}
+                  disabled={!currentUser?.id}
+                  title="Copy UUID to clipboard"
                 >
-                  {isSavingProfile ? "Saving..." : "Save Profile"}
+                  <Copy className="h-4 w-4" />
                 </Button>
               </div>
-            </form>
-          )}
+              <p className="text-sm text-gray-500 mt-1">
+                Unique identifier for your account
+              </p>
+            </div>
+
+            {/* Display Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Display Name
+              </label>
+              <Input
+                name="displayName"
+                type="text"
+                defaultValue={profileData?.displayName || ""}
+                placeholder="Enter your display name"
+                className="max-w-md"
+              />
+            </div>
+
+            {/* Website */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                <Globe className="h-4 w-4" />
+                Website
+              </label>
+              <Input
+                name="website"
+                type="url"
+                defaultValue={profileData?.website || ""}
+                placeholder="https://yourwebsite.com"
+                className="max-w-md"
+              />
+            </div>
+
+            {/* GitHub */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                <Github className="h-4 w-4" />
+                GitHub
+              </label>
+              <Input
+                name="github"
+                type="url"
+                defaultValue={profileData?.github || ""}
+                placeholder="https://github.com/username"
+                className="max-w-md"
+              />
+            </div>
+
+            {/* Social Media Section */}
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">
+                Social Media
+              </h3>
+
+              {/* Bluesky */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4" />
+                  Bluesky
+                </label>
+                <Input
+                  name="bluesky"
+                  type="text"
+                  defaultValue={profileData?.bluesky || ""}
+                  placeholder="@username.bsky.social"
+                  className="max-w-md"
+                />
+              </div>
+
+              {/* Mastodon */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4" />
+                  Mastodon
+                </label>
+                <Input
+                  name="mastodon"
+                  type="text"
+                  defaultValue={profileData?.mastodon || ""}
+                  placeholder="@username@mastodon.social"
+                  className="max-w-md"
+                />
+              </div>
+
+              {/* Twitter */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4" />
+                  Twitter
+                </label>
+                <Input
+                  name="twitter"
+                  type="text"
+                  defaultValue={profileData?.twitter || ""}
+                  placeholder="@username"
+                  className="max-w-md"
+                />
+              </div>
+            </div>
+
+            {/* Profile Message */}
+            {profileMessage && (
+              <div
+                className={`p-3 rounded-md ${
+                  profileMessage.includes("successfully")
+                    ? "bg-green-50 text-green-800 border border-green-200"
+                    : "bg-red-50 text-red-800 border border-red-200"
+                }`}
+              >
+                {profileMessage}
+              </div>
+            )}
+
+            {/* Profile Save Button */}
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                disabled={isSavingProfile}
+                variant="default"
+                size="default"
+              >
+                {isSavingProfile ? "Saving..." : "Save Profile"}
+              </Button>
+            </div>
+          </form>
         </CardContent>
       </Card>
 
@@ -821,14 +820,61 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Extra Functionality Settings Card */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              />
+            </svg>
+            Extra Functionality
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-start space-x-3">
+              <Checkbox
+                id="extra-enabled"
+                checked={extraEnabled}
+                onCheckedChange={handleExtraChange}
+                className="mt-1"
+              />
+              <div className="space-y-2">
+                <label
+                  htmlFor="extra-enabled"
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                >
+                  Enable Extras
+                </label>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* API Keys & Authentication Section */}
       <KeysSection
         apiKey={apiKey}
         setApiKey={setApiKey}
-        nearAiToken={nearAiToken}
-        setNearAiToken={setNearAiToken}
         onSave={handleSave}
         isLoading={isLoading}
+        activeKey={activeAPIKey}
       />
 
       {/* Private Key Section - Only visible in debug mode */}

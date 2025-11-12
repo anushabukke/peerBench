@@ -1,11 +1,9 @@
 "use client";
 
-import { useState, useTransition, useEffect } from "react";
+import { useState, useTransition } from "react";
 import { motion } from "motion/react";
-import Image from "next/image";
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
-import * as yup from "yup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -18,9 +16,17 @@ import {
 import { AlertCircle, Loader2 } from "lucide-react";
 import { signIn } from "@/lib/actions/auth";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
-
-export const fetchCache = "force-no-store";
+import * as yup from "yup";
+import { useDispatch } from "react-redux";
+import { AppDispatch } from "@/redux/store";
+import { fetchUser } from "@/redux/slices/userSlice";
+import { useRefreshDataAfterAuth } from "@/hooks/useRefreshDataAfterAuth";
+import { useSettingOpenRouterKey } from "@/lib/hooks/settings/use-setting-openrouter-key";
+import { useApiKeyApi } from "@/lib/hooks/use-apikey-api";
+import { ApiKeyProviders } from "@/database/types";
+import { useQueryClient } from "@tanstack/react-query";
 
 const loginSchema = yup.object({
   email: yup
@@ -38,21 +44,16 @@ type LoginFormData = yup.InferType<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const dispatch = useDispatch<AppDispatch>();
+  const { refreshAllData } = useRefreshDataAfterAuth();
+  const { getApiKey } = useApiKeyApi();
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
-
-  // Handle authentication code from password reset
-  useEffect(() => {
-    const code = searchParams.get("code");
-    if (code) {
-      console.log("Login page received auth code:", code);
-      // This is likely from a password reset, redirect to auth callback
-      const authCallbackUrl = `/auth/callback?code=${code}&next=/reset-password`;
-      console.log("Redirecting to auth callback:", authCallbackUrl);
-      router.push(authCallbackUrl);
-    }
-  }, [searchParams, router]);
+  const [openRouterApiKey, setOpenRouterApiKey] = useSettingOpenRouterKey();
+  const invitationCode = searchParams.get("code");
+  const redirectPath = searchParams.get("redirect");
+  const queryClient = useQueryClient();
 
   const {
     register,
@@ -60,7 +61,6 @@ export default function LoginPage() {
     formState: { errors },
   } = useForm<LoginFormData>({
     resolver: yupResolver(loginSchema),
-    mode: "onChange",
   });
 
   const onSubmit = async (formData: LoginFormData) => {
@@ -80,9 +80,34 @@ export default function LoginPage() {
         return;
       }
 
-      // Use React's useTransition for smooth routing
+      // If user doesn't have an API key settled, try to get one from the server
+      if (!openRouterApiKey) {
+        const apiKey = await getApiKey(ApiKeyProviders.openrouter);
+        if (apiKey?.key) {
+          setOpenRouterApiKey(apiKey.key);
+        }
+      }
+
+      // Dispatch user result to Redux store
+      if ("data" in result && result.data) {
+        // Using 'as any' to avoid typing issues
+        dispatch(fetchUser.fulfilled(result.data as any, ""));
+
+        await refreshAllData();
+      }
+
+      // Invalidate all the cached queries
+      queryClient.invalidateQueries();
+
       startTransition(() => {
-        router.push("/dashboard");
+        if (invitationCode) {
+          router.push(`/prompt-sets/invite/${encodeURI(invitationCode)}`);
+        } else if (redirectPath) {
+          // Redirect to the original page they were trying to access
+          router.push(redirectPath);
+        } else {
+          router.push("/");
+        }
       });
     } catch (error) {
       console.error("Login error:", error);
@@ -93,30 +118,23 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-4 bg-background">
+    <main className="h-[calc(100vh-100px)] flex items-center justify-center p-4 bg-background">
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.95 }}
         animate={{
-          opacity: isPending ? 0 : 1,
-          y: isPending ? -20 : 0,
-          scale: isPending ? 0.95 : 1,
+          opacity: 1,
+          y: 0,
+          scale: 1,
         }}
         transition={{
-          duration: isPending ? 0.3 : 0.6,
+          duration: 0.6,
           ease: "easeOut",
         }}
         className="w-full max-w-md"
       >
         <Card className="shadow-2xl border-0 bg-card/95 backdrop-blur-sm">
           <CardHeader className="text-center pb-6">
-            <motion.div
-              className="flex justify-center mb-4"
-              animate={{
-                scale: isPending ? 0.9 : 1,
-                opacity: isPending ? 0.7 : 1,
-              }}
-              transition={{ duration: 0.3 }}
-            >
+            <div className="flex justify-center mb-4">
               <Image
                 src="/logo.png"
                 alt="PeerBench Logo"
@@ -125,21 +143,15 @@ export default function LoginPage() {
                 className="h-12 w-auto"
                 priority
               />
-            </motion.div>
-            <motion.div
-              animate={{
-                y: isPending ? -10 : 0,
-                opacity: isPending ? 0.8 : 1,
-              }}
-              transition={{ duration: 0.3 }}
-            >
+            </div>
+            <div>
               <CardTitle className="text-3xl font-bold text-card-foreground">
                 Welcome Back
               </CardTitle>
               <CardDescription className="text-base text-muted-foreground mt-2">
                 Sign in to your peerBench account
               </CardDescription>
-            </motion.div>
+            </div>
           </CardHeader>
 
           <CardContent className="space-y-6">
@@ -158,6 +170,7 @@ export default function LoginPage() {
                   {...register("email")}
                   placeholder="Enter your email"
                   className="h-11 text-base"
+                  tabIndex={1}
                 />
                 {errors.email && (
                   <motion.p
@@ -193,6 +206,7 @@ export default function LoginPage() {
                   {...register("password")}
                   placeholder="Enter your password"
                   className="h-11 text-base"
+                  tabIndex={2}
                 />
                 {errors.password && (
                   <motion.p
@@ -219,12 +233,12 @@ export default function LoginPage() {
 
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || isPending}
                 className="w-full h-12 text-base font-semibold"
                 variant="default"
                 size="default"
               >
-                {isLoading ? (
+                {isLoading || isPending ? (
                   <span className="flex items-center justify-center gap-2">
                     <Loader2 className="animate-spin h-5 w-5 text-primary-foreground" />
                     Signing in...
@@ -235,17 +249,17 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/*  <div className="mt-6 text-center">
-              <p className="text-sm text-gray-600">
+            <div className="text-center pt-4 border-t">
+              <p className="text-sm text-muted-foreground">
                 Don&apos;t have an account?{" "}
                 <Link
-                  href="/signup"
-                  className="font-medium text-gray-600 hover:text-gray-500 transition-colors duration-200"
+                  href={`/signup${redirectPath ? `?redirect=${encodeURIComponent(redirectPath)}` : ""}`}
+                  className="text-primary hover:text-primary/80 font-semibold transition-colors duration-200"
                 >
                   Sign up
                 </Link>
               </p>
-            </div> */}
+            </div>
           </CardContent>
         </Card>
       </motion.div>

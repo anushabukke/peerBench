@@ -1,8 +1,8 @@
 import React, { useRef } from "react";
-import { twMerge } from "tailwind-merge";
 import { Button } from "./button";
 import { VariantProps } from "class-variance-authority";
 import { buttonVariants } from "./button";
+import { cn } from "@/utils/cn";
 
 type FileInputProps = Omit<
   React.InputHTMLAttributes<HTMLInputElement>,
@@ -48,7 +48,7 @@ export const FileInput = React.forwardRef<HTMLInputElement, FileInputProps>(
     };
 
     return (
-      <div className={twMerge("relative", className)}>
+      <div className={cn("relative", className)}>
         <input
           type="file"
           ref={(node) => {
@@ -71,7 +71,8 @@ export const FileInput = React.forwardRef<HTMLInputElement, FileInputProps>(
           variant={variant || "default"}
           size={size || "default"}
           onClick={handleClick}
-          className={twMerge("flex items-center gap-2", buttonClassName)}
+          disabled={props.disabled}
+          className={cn("flex items-center gap-2", buttonClassName)}
         >
           {icon}
           {label}

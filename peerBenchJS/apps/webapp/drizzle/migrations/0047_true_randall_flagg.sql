@@ -1,0 +1,1 @@
+CREATE INDEX "test_results_prompt_id_index" ON "test_results" USING btree ("prompt_id");

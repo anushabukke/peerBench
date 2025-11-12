@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PeerLeaderboard } from "@/services/stats.service";
 import { Users, TrendingUp, Activity } from "lucide-react";
 // import { DateTime } from "luxon";
-import { formatNumber } from "@/utils/supabase/format-number";
+import { formatNumber } from "@/utils/format-number";
 
 interface PeerLeaderboardStatsProps {
   leaderboard: PeerLeaderboard;

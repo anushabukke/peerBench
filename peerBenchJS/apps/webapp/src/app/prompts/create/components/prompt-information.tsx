@@ -1,0 +1,362 @@
+"use client";
+
+import React from "react";
+import { Textarea } from "@/components/ui/textarea";
+import { usePageContext } from "../context";
+import { preparePrompt, PromptTypes } from "@peerbench/sdk";
+import { Button } from "@/components/ui/button";
+import Alert from "@/components/ui/alert";
+import OptionInput from "./option-input";
+import DocumentSelector from "@/components/document-selector";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Plus } from "lucide-react";
+
+export default function PromptInformation() {
+  const ctx = usePageContext();
+
+  const handleQuestionChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    ctx.setPrompt((prev) => {
+      let fullPromptData = preparePrompt(e.target.value, prev.options);
+
+      // If this is an "Open Ended with Docs" prompt and documents are selected, append them
+      if (
+        ctx.selectedPromptType === PromptTypes.OpenEndedWithDocs &&
+        ctx.selectedDocuments.length > 0
+      ) {
+        const documentSections = ctx.selectedDocuments
+          .map(
+            (doc) =>
+              `<supporting-document name="${doc.name}">\n${doc.content}\n</supporting-document>\n\n`
+          )
+          .join("");
+        fullPromptData += "\n\n" + documentSections;
+      }
+
+      return {
+        ...prev,
+        question: {
+          data: e.target.value,
+
+          // These will be calculated later
+          cid: "",
+          sha256: "",
+        },
+
+        fullPrompt: {
+          data: fullPromptData,
+
+          // These will be calculated later
+          cid: "",
+          sha256: "",
+        },
+      };
+    });
+  };
+
+  const handleExpectedAnswerChange = (
+    e: React.ChangeEvent<HTMLTextAreaElement>
+  ) => {
+    ctx.setPrompt((prev) => ({
+      ...prev,
+      answer: e.target.value,
+    }));
+  };
+
+  const handleAddOptionClick = () => {
+    const optionKey = String.fromCharCode(
+      65 + Object.keys(ctx.prompt.options ?? {}).length
+    );
+    ctx.setPrompt((prev) => {
+      const options = {
+        ...prev.options,
+        [optionKey]: "",
+      };
+
+      return {
+        ...prev,
+        fullPrompt: {
+          data: preparePrompt(prev.question.data, options),
+
+          // These will be calculated later
+          cid: "",
+          sha256: "",
+        },
+        options,
+      };
+    });
+  };
+
+  const handleRemoveOptionClick = (optionKey: string) => {
+    ctx.setPrompt((prev) => {
+      const entries = Object.entries(prev.options ?? {}).sort((a, b) =>
+        a[0].localeCompare(b[0])
+      );
+      let index = 0;
+
+      const newOptions: Record<string, string> = {};
+      for (const [key, value] of entries) {
+        if (key === optionKey) {
+          continue;
+        }
+
+        newOptions[String.fromCharCode(65 + index)] = value;
+        index++;
+      }
+
+      return {
+        ...prev,
+        options: newOptions,
+        answerKey: prev.answerKey === optionKey ? "" : prev.answerKey,
+        fullPrompt: {
+          data: preparePrompt(prev.question.data, newOptions),
+          cid: "",
+          sha256: "",
+        },
+      };
+    });
+  };
+
+  const handleUpdateOptionClick = (optionKey: string, value: string) => {
+    ctx.setPrompt((prev) => {
+      const options = {
+        ...prev.options,
+        [optionKey]: value,
+      };
+
+      let fullPromptData = preparePrompt(prev.question.data, options);
+
+      // If this is an "Open Ended with Docs" prompt and documents are selected, append them
+      if (
+        ctx.selectedPromptType === PromptTypes.OpenEndedWithDocs &&
+        ctx.selectedDocuments.length > 0
+      ) {
+        const documentSections = ctx.selectedDocuments
+          .map(
+            (doc) =>
+              `<supporting-document name="${doc.name}">\n${doc.content}\n</supporting-document>\n\n`
+          )
+          .join("");
+        fullPromptData += "\n\n" + documentSections;
+      }
+
+      return {
+        ...prev,
+        answer: optionKey === prev.answerKey ? options[optionKey] : prev.answer,
+        fullPrompt: {
+          data: fullPromptData,
+
+          // These will be calculated later
+          cid: "",
+          sha256: "",
+        },
+        options,
+      };
+    });
+  };
+
+  const handleAnswerKeyChange = (e: string) => {
+    ctx.setPrompt((prev) => ({
+      ...prev,
+      answerKey: e,
+      answer: prev.options?.[e],
+    }));
+  };
+
+  const handleDocumentsChange = (documents: any[]) => {
+    ctx.setSelectedDocuments(documents);
+
+    // Update the full prompt with the new documents
+    ctx.setPrompt((prev) => {
+      let fullPromptData = preparePrompt(prev.question.data, prev.options);
+
+      // If this is an "Open Ended with Docs" prompt and documents are selected, append them
+      if (
+        ctx.selectedPromptType === PromptTypes.OpenEndedWithDocs &&
+        documents.length > 0
+      ) {
+        const documentSections = documents
+          .map(
+            (doc) =>
+              `<supporting-document name="${doc.name}">\n${doc.content}\n</supporting-document>\n\n`
+          )
+          .join("");
+        fullPromptData += "\n\n" + documentSections;
+      }
+
+      return {
+        ...prev,
+        fullPrompt: {
+          data: fullPromptData,
+          cid: "",
+          sha256: "",
+        },
+        // Update metadata to include document information
+        metadata: {
+          ...prev.metadata,
+          supportingDocuments: documents.map((doc) => ({
+            id: doc.id,
+            name: doc.name,
+            cid: doc.cid,
+            sha256: doc.sha256,
+          })),
+        },
+      };
+    });
+  };
+
+  const renderExpectedAnswerAlert = () => {
+    if (
+      ctx.selectedPromptType !== PromptTypes.MultipleChoice &&
+      ctx.prompt.answer &&
+      ctx.prompt.answer.length >= 50
+    ) {
+      return (
+        <Alert className="my-2" variant="warning">
+          Keep in mind that long expected answers are hard to evaluate.
+        </Alert>
+      );
+    }
+  };
+
+  return (
+    <div
+      id="prompt-creation-section"
+      className="bg-white rounded-lg shadow-lg p-6 border border-gray-200"
+    >
+      <h2 className="text-xl font-semibold text-gray-700 mb-4">
+        {ctx.generationMode === "llm-generated"
+          ? `5. Refinement`
+          : `4. Creation`}
+      </h2>
+
+      <div className="space-y-4">
+        <div className="flex flex-col space-y-2">
+          <label className="block font-medium text-gray-700 mb-2">
+            Question
+          </label>
+          <Textarea
+            value={ctx.prompt.question.data}
+            onChange={handleQuestionChange}
+            disabled={ctx.isInProgress}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            rows={3}
+            placeholder="Enter your question here..."
+          />
+          <p className="text-sm text-gray-600 mb-3">
+            💡 Ensure the content of the question is aligned with the
+            &quot;System Prompt&quot; below, in the &quot;Test Prompt&quot;
+            section.
+          </p>
+        </div>
+
+        {ctx.selectedPromptType === PromptTypes.MultipleChoice ? (
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block font-medium text-gray-700">Options</label>
+              <Button
+                onClick={handleAddOptionClick}
+                disabled={ctx.isInProgress}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Option
+              </Button>
+            </div>
+            {Object.keys(ctx.prompt.options ?? {}).length > 0 ? (
+              <p className="text-sm text-gray-600 mb-3">
+                💡 Click the letter button next to the correct answer to select
+                it
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No options available. Add new options via &quot;Add Option&quot;
+                button.
+              </p>
+            )}
+            <div className="space-y-2">
+              {Object.entries(ctx.prompt.options ?? {}).map(([key, value]) => (
+                <OptionInput
+                  key={key}
+                  optionKey={key}
+                  value={value}
+                  handleAnswerKeyChange={handleAnswerKeyChange}
+                  handleUpdateOptionClick={handleUpdateOptionClick}
+                  handleRemoveOptionClick={handleRemoveOptionClick}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div>
+            <label className="block font-medium text-gray-700 mb-2">
+              Expected Answer (Optional)
+            </label>
+            <Textarea
+              value={ctx.prompt.answer}
+              onChange={handleExpectedAnswerChange}
+              disabled={ctx.isInProgress}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+              rows={3}
+              placeholder="Enter the expected answer or answer guidelines..."
+            />
+            {renderExpectedAnswerAlert()}
+          </div>
+        )}
+
+        {/* Document Selection for Open Ended with Docs */}
+        {ctx.selectedPromptType === PromptTypes.OpenEndedWithDocs && (
+          <div>
+            <label className="block font-medium text-gray-700 mb-2">
+              Supporting Documents
+            </label>
+            <p className="text-sm text-gray-600 mb-3">
+              Select documents to attach to your prompt. These will be included
+              in the full prompt sent to the AI.
+            </p>
+            <DocumentSelector
+              selectedDocuments={ctx.selectedDocuments}
+              onDocumentsChange={handleDocumentsChange}
+              disabled={ctx.isInProgress}
+            />
+          </div>
+        )}
+        <div>
+          <Accordion type="single" collapsible className="w-full">
+            <AccordionItem
+              value="full-prompt"
+              className="border rounded-lg border-gray-200"
+            >
+              <AccordionTrigger className="pl-4 py-3 text-sm font-medium text-gray-700 hover:text-gray-900 hover:no-underline">
+                <div className="flex flex-col items-start">
+                  <span className="font-medium text-gray-700">Full Prompt</span>
+                  <span className="text-xs text-gray-500 font-normal">
+                    The complete Prompt that will be sent to the model
+                    {ctx.prompt.fullPrompt.data.length > 0 && (
+                      <span className="ml-2">
+                        ({ctx.prompt.fullPrompt.data.length} characters)
+                      </span>
+                    )}
+                  </span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pb-0">
+                <div className="p-2 border-t bg-gray-50 border-gray-200">
+                  <Textarea
+                    value={ctx.prompt.fullPrompt.data}
+                    readOnly
+                    className="min-h-[300px] max-h-[500px] resize-none font-mono text-sm border-0 focus:ring-0 bg-white"
+                    placeholder="Full prompt will appear here..."
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      </div>
+    </div>
+  );
+}

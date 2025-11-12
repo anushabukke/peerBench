@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import MultiSelect, { Option } from "@/components/ui/multi-select";
 import { getReviews } from "@/lib/actions/get-reviews";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { cn } from "@/utils/cn";
 import { getFlags } from "@/lib/actions/get-flags";
 
 const predefinedFlags = [
@@ -84,6 +84,7 @@ export function TestResultReviewModal({
   const [reviewOpinion, setReviewOpinion] = useState<ReviewOpinion | null>(
     null
   );
+  const [hideFlags, setHideFlags] = useState(false);
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
@@ -200,6 +201,12 @@ export function TestResultReviewModal({
   }, []);
 
   useEffect(() => {
+    // Check localStorage for hideFlags setting
+    const extraSetting = localStorage.getItem("extra");
+    setHideFlags(extraSetting !== "true");
+  }, []);
+
+  useEffect(() => {
     if (isOpen) {
       if (reviewId) {
         loadExistingReview();
@@ -231,31 +238,33 @@ export function TestResultReviewModal({
             </div>
           ) : (
             <div className="grid gap-4 px-2 flex-shrink-0">
-              <div className="grid gap-2">
-                <label className="text-xs text-gray-600 font-medium">
-                  Flags (optional)
-                </label>
-                <MultiSelect
-                  creatable
-                  triggerSearchOnFocus
-                  defaultOptions={predefinedFlags.filter(
-                    (flag) => !reviewOpinion || flag.opinion === reviewOpinion
-                  )}
-                  loadingIndicator={
-                    <div className="p-3 flex items-center gap-2 text-gray-500 dark:text-gray-400">
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
-                      <span>Loading flags...</span>
-                    </div>
-                  }
-                  onSearch={handleFlagSearch}
-                  value={selectedFlags}
-                  onChange={handleFlagsChange}
-                  placeholder="Add flags..."
-                  disabled={isSubmitting}
-                  hidePlaceholderWhenSelected
-                  renderOption={renderFlagOption}
-                />
-              </div>
+              {!hideFlags && (
+                <div className="grid gap-2">
+                  <label className="text-xs text-gray-600 font-medium">
+                    Flags (optional)
+                  </label>
+                  <MultiSelect
+                    creatable
+                    triggerSearchOnFocus
+                    defaultOptions={predefinedFlags.filter(
+                      (flag) => !reviewOpinion || flag.opinion === reviewOpinion
+                    )}
+                    loadingIndicator={
+                      <div className="p-3 flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+                        <span>Loading flags...</span>
+                      </div>
+                    }
+                    onSearch={handleFlagSearch}
+                    value={selectedFlags}
+                    onChange={handleFlagsChange}
+                    placeholder="Add flags..."
+                    disabled={isSubmitting}
+                    hidePlaceholderWhenSelected
+                    renderOption={renderFlagOption}
+                  />
+                </div>
+              )}
               <div className="grid gap-2">
                 <label
                   htmlFor="review"

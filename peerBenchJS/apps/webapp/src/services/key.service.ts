@@ -87,11 +87,11 @@ async function collectDeviceMetadata(): Promise<DeviceMetadata> {
 
     let ipAddress = "unknown";
     if (cfConnectingIp) {
-      ipAddress = cfConnectingIp.split(",")[0].trim();
+      ipAddress = cfConnectingIp.split(",")[0]!.trim();
     } else if (realIp) {
-      ipAddress = realIp.split(",")[0].trim();
+      ipAddress = realIp.split(",")[0]!.trim();
     } else if (forwardedFor) {
-      ipAddress = forwardedFor.split(",")[0].trim();
+      ipAddress = forwardedFor.split(",")[0]!.trim();
     }
 
     // Extract user agent

@@ -1,0 +1,1 @@
+ALTER TABLE "known_models" ADD CONSTRAINT "known_models_name_owner_unique" UNIQUE("name","owner");
