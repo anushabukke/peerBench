@@ -17,7 +17,7 @@
     "url": "git+https://github.com/peerbench/peerBench.git"
   },
   "license": "MIT",
-  "author": "peerBench Development Team",
+  "author": "peerBench community",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
