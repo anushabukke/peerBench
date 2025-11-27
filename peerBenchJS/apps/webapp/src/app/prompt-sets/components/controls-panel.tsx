@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 
 interface Filters {
   sortBy: string;
@@ -25,6 +25,16 @@ export default function ControlsPanel({
   onApply: () => void;
   onReset: () => void;
 }) {
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && open) {
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [open, onClose]);
+
   const handleSortClick = (field: string) => {
     setFilters((prev) => {
       const current = prev.sortBy;
@@ -54,7 +64,6 @@ export default function ControlsPanel({
         role="dialog"
         aria-modal="true"
       >
-        {/* filters */}
         <div className="p-6 h-full overflow-y-auto flex flex-col">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-semibold">Filters</h2>
@@ -68,9 +77,9 @@ export default function ControlsPanel({
             </button>
           </div>
 
+          {/* SORT */}
           <div className="mb-8">
             <h3 className="font-semibold mb-2">Sort By</h3>
-
             <div className="flex gap-2">
               {["createdAt", "updatedAt"].map((field) => {
                 const active = filters.sortBy.startsWith(field);
@@ -96,7 +105,9 @@ export default function ControlsPanel({
             </div>
           </div>
 
+          {/* FILTERS */}
           <div className="space-y-6">
+            {/* Average Score */}
             <div>
               <h3 className="font-semibold mb-2">Average Score</h3>
               <div className="grid grid-cols-2 gap-3">
@@ -104,34 +115,34 @@ export default function ControlsPanel({
                   <span className="mb-1">Min</span>
                   <input
                     type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
                     className="border p-2 rounded-lg"
                     value={filters.avgMin}
                     onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        avgMin: e.target.value,
-                      }))
+                      setFilters((f) => ({ ...f, avgMin: e.target.value }))
                     }
                   />
                 </label>
-
                 <label className="flex flex-col text-sm">
                   <span className="mb-1">Max</span>
                   <input
                     type="number"
+                    min={0}
+                    max={100}
+                    step={0.1}
                     className="border p-2 rounded-lg"
                     value={filters.avgMax}
                     onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        avgMax: e.target.value,
-                      }))
+                      setFilters((f) => ({ ...f, avgMax: e.target.value }))
                     }
                   />
                 </label>
               </div>
             </div>
 
+            {/* Total Prompts Count */}
             <div>
               <h3 className="font-semibold mb-2">Total Prompts Count</h3>
               <div className="grid grid-cols-2 gap-3">
@@ -139,28 +150,25 @@ export default function ControlsPanel({
                   <span className="mb-1">Min</span>
                   <input
                     type="number"
+                    min={0}
+                    step={1}
                     className="border p-2 rounded-lg"
                     value={filters.promptsMin}
                     onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        promptsMin: e.target.value,
-                      }))
+                      setFilters((f) => ({ ...f, promptsMin: e.target.value }))
                     }
                   />
                 </label>
-
                 <label className="flex flex-col text-sm">
                   <span className="mb-1">Max</span>
                   <input
                     type="number"
+                    min={0}
+                    step={1}
                     className="border p-2 rounded-lg"
                     value={filters.promptsMax}
                     onChange={(e) =>
-                      setFilters((f) => ({
-                        ...f,
-                        promptsMax: e.target.value,
-                      }))
+                      setFilters((f) => ({ ...f, promptsMax: e.target.value }))
                     }
                   />
                 </label>
@@ -178,7 +186,6 @@ export default function ControlsPanel({
             >
               Reset
             </button>
-
             <button
               type="button"
               onClick={onApply}

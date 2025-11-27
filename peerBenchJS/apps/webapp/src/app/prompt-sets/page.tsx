@@ -22,7 +22,12 @@ export default function PromptSetsPage() {
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  type SortOption = "" | "createdAt-asc" | "createdAt-desc";
+  type SortOption =
+    | ""
+    | "createdAt-asc"
+    | "createdAt-desc"
+    | "updatedAt-asc"
+    | "updatedAt-desc";
 
   const [filters, setFilters] = useState<{
     sortBy: SortOption;
@@ -49,51 +54,73 @@ export default function PromptSetsPage() {
 
   const applyFilters = () => setFiltersOpen(false);
 
-  //  filter logic
+  // filter + search + sort logic
   const processedList = useMemo(() => {
     if (!promptSets) return [];
 
     let list = [...promptSets];
 
+    // search
     const q = search.toLowerCase();
     if (q) {
       list = list.filter((p) => {
         const title = p.title?.toLowerCase() || "";
         const desc = p.description?.toLowerCase() || "";
         const tags = (p.tags?.join(" ") ?? "").toLowerCase() || "";
-
         return title.includes(q) || desc.includes(q) || tags.includes(q);
       });
     }
 
     // RANGE FILTERS
     list = list.filter((p) => {
-      if (filters.avgMin && p.averageScore < Number(filters.avgMin))
-        return false;
-      if (filters.avgMax && p.averageScore > Number(filters.avgMax))
-        return false;
+      const avgMin = filters.avgMin !== "" ? Number(filters.avgMin) : null;
+      const avgMax = filters.avgMax !== "" ? Number(filters.avgMax) : null;
+      const promptsMin =
+        filters.promptsMin !== "" ? Number(filters.promptsMin) : null;
+      const promptsMax =
+        filters.promptsMax !== "" ? Number(filters.promptsMax) : null;
 
+      if (avgMin !== null && !isNaN(avgMin) && p.averageScore < avgMin)
+        return false;
+      if (avgMax !== null && !isNaN(avgMax) && p.averageScore > avgMax)
+        return false;
       if (
-        filters.promptsMin &&
-        p.totalPromptsCount < Number(filters.promptsMin)
+        promptsMin !== null &&
+        !isNaN(promptsMin) &&
+        p.totalPromptsCount < promptsMin
       )
         return false;
       if (
-        filters.promptsMax &&
-        p.totalPromptsCount > Number(filters.promptsMax)
+        promptsMax !== null &&
+        !isNaN(promptsMax) &&
+        p.totalPromptsCount > promptsMax
       )
         return false;
 
       return true;
     });
 
+    // SORTING
+
     if (filters.sortBy) {
       const [field, order] = filters.sortBy.split("-");
-      list.sort((a, b) => {
-        const x = new Date(a[field]).getTime();
-        const y = new Date(b[field]).getTime();
-        return order === "asc" ? x - y : y - x;
-      });
+
+      if (
+        (field !== "createdAt" && field !== "updatedAt") ||
+        (order !== "asc" && order !== "desc")
+      ) {
+        console.warn("Invalid sortBy format:", filters.sortBy);
+      } else {
+        list.sort((a, b) => {
+          const aDate = field === "createdAt" ? a.createdAt : a.updatedAt;
+          const bDate = field === "createdAt" ? b.createdAt : b.updatedAt;
+
+          const x = new Date(aDate).getTime();
+          const y = new Date(bDate).getTime();
+
+          return order === "asc" ? x - y : y - x;
+        });
+      }
     }
 
     return list;
@@ -156,8 +183,7 @@ export default function PromptSetsPage() {
         <input
           type="text"
           placeholder="Search by benchmark, description, tags..."
-          className="w-full h-12 pl-10 pr-4 border border-gray-300 rounded-lg 
-                     focus:border-blue-300 focus:outline-none"
+          className="w-full h-12 pl-10 pr-4 border border-gray-300 rounded-lg focus:border-blue-300 focus:outline-none"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
