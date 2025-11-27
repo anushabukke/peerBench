@@ -5,11 +5,9 @@ import { PromptSetCard } from "./components/prompt-set-card";
 import LoadingSpinner from "@/components/loading-spinner";
 import PromptSetCardSkeletonCard from "./components/prompt-set-card-skeleton";
 import { errorMessage } from "@/utils/error-message";
-// import { useInfinitePromptSets } from "./use-infinite-prompt-sets";//mock data 
 import { useInfinitePromptSets } from "@/lib/react-query/use-infinite-prompt-sets";
-
 import { Search as SearchIcon, SlidersHorizontal } from "lucide-react";
-import FiltersPanel from "./components/filters-panel";
+import ControlsPanel from "./components/controls-panel";
 
 export default function PromptSetsPage() {
   const {
@@ -24,7 +22,15 @@ export default function PromptSetsPage() {
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  const [filters, setFilters] = useState({
+  type SortOption = "" | "createdAt-asc" | "createdAt-desc";
+
+  const [filters, setFilters] = useState<{
+    sortBy: SortOption;
+    avgMin: string;
+    avgMax: string;
+    promptsMin: string;
+    promptsMax: string;
+  }>({
     sortBy: "",
     avgMin: "",
     avgMax: "",
@@ -43,7 +49,7 @@ export default function PromptSetsPage() {
 
   const applyFilters = () => setFiltersOpen(false);
 
-//  filter logic
+  //  filter logic
   const processedList = useMemo(() => {
     if (!promptSets) return [];
 
@@ -54,7 +60,7 @@ export default function PromptSetsPage() {
       list = list.filter((p) => {
         const title = p.title?.toLowerCase() || "";
         const desc = p.description?.toLowerCase() || "";
-        const tags = p.tags?.join(" ").toLowerCase() || "";
+        const tags = (p.tags?.join(" ") ?? "").toLowerCase() || "";
 
         return title.includes(q) || desc.includes(q) || tags.includes(q);
       });
@@ -81,7 +87,6 @@ export default function PromptSetsPage() {
       return true;
     });
 
-    // SORTING
     if (filters.sortBy) {
       const [field, order] = filters.sortBy.split("-");
       list.sort((a, b) => {
@@ -158,7 +163,6 @@ export default function PromptSetsPage() {
         />
       </div>
 
-      {/* LIST */}
       <div className="space-y-4">
         {isLoading ? (
           Array.from({ length: 10 }).map((_, i) => (
@@ -166,11 +170,13 @@ export default function PromptSetsPage() {
           ))
         ) : (
           <>
-            {processedList.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                <p className="text-lg">No matching benchmarks found</p>
-              </div>
-            )}
+            {!isLoading &&
+              !isFetchingNextPage &&
+              processedList.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                  <p className="text-lg">No matching benchmarks found</p>
+                </div>
+              )}
 
             {processedList.map((promptSet) => (
               <PromptSetCard key={promptSet.id} item={promptSet} />
@@ -178,18 +184,20 @@ export default function PromptSetsPage() {
 
             <div ref={loadingRef} className="flex justify-center py-4">
               {isFetchingNextPage && <LoadingSpinner position="block" />}
-              {!hasNextPage && promptSets?.length > 0 && (
-                <p className="text-gray-500 text-sm">
-                  No more benchmarks to load
-                </p>
-              )}
+              {processedList.length > 0 &&
+                !hasNextPage &&
+                promptSets?.length > 0 && (
+                  <p className="text-gray-500 text-sm">
+                    No more benchmarks to load
+                  </p>
+                )}
             </div>
           </>
         )}
       </div>
 
       {/* FILTER PANEL */}
-      <FiltersPanel
+      <ControlsPanel
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
         filters={filters}
