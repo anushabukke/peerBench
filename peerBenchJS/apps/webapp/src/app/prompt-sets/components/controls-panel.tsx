@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useEffect } from "react";
+import type { SortOption, Filters } from "../types";
 
-interface Filters {
-  sortBy: string;
-  avgMin: string;
-  avgMax: string;
-  promptsMin: string;
-  promptsMax: string;
+interface ControlsPanelProps {
+  open: boolean;
+  onClose: () => void;
+  filters: Filters;
+  setFilters: React.Dispatch<React.SetStateAction<Filters>>;
+  onApply: () => void;
+  onReset: () => void;
 }
 
 export default function ControlsPanel({
@@ -17,25 +19,16 @@ export default function ControlsPanel({
   setFilters,
   onApply,
   onReset,
-}: {
-  open: boolean;
-  onClose: () => void;
-  filters: Filters;
-  setFilters: React.Dispatch<React.SetStateAction<Filters>>;
-  onApply: () => void;
-  onReset: () => void;
-}) {
+}: ControlsPanelProps) {
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open) {
-        onClose();
-      }
+      if (e.key === "Escape" && open) onClose();
     };
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
   }, [open, onClose]);
 
-  const handleSortClick = (field: string) => {
+  const handleSortClick = (field: "createdAt" | "updatedAt") => {
     setFilters((prev) => {
       const current = prev.sortBy;
       if (current === `${field}-asc`)
@@ -45,7 +38,7 @@ export default function ControlsPanel({
     });
   };
 
-  const getDirection = (value: string) => value.split("-")[1] ?? "";
+  const getDirection = (value: SortOption) => value.split("-")[1] ?? "";
 
   return (
     <>
@@ -81,17 +74,16 @@ export default function ControlsPanel({
           <div className="mb-8">
             <h3 className="font-semibold mb-2">Sort By</h3>
             <div className="flex gap-2">
-              {["createdAt", "updatedAt"].map((field) => {
+              {(["createdAt", "updatedAt"] as const).map((field) => {
                 const active = filters.sortBy.startsWith(field);
-                const dir = getDirection(filters.sortBy);
+                const dir = getDirection(filters.sortBy as SortOption);
 
                 return (
                   <button
                     key={field}
                     type="button"
                     onClick={() => handleSortClick(field)}
-                    className={`px-3 py-2 rounded-lg border flex-1 text-sm transition
-                    ${
+                    className={`px-3 py-2 rounded-lg border flex-1 text-sm transition ${
                       active
                         ? "bg-gray-700 text-white"
                         : "bg-white hover:bg-gray-50"
@@ -107,7 +99,7 @@ export default function ControlsPanel({
 
           {/* FILTERS */}
           <div className="space-y-6">
-            {/* Average Score */}
+          
             <div>
               <h3 className="font-semibold mb-2">Average Score</h3>
               <div className="grid grid-cols-2 gap-3">
@@ -142,7 +134,6 @@ export default function ControlsPanel({
               </div>
             </div>
 
-            {/* Total Prompts Count */}
             <div>
               <h3 className="font-semibold mb-2">Total Prompts Count</h3>
               <div className="grid grid-cols-2 gap-3">

@@ -6,9 +6,9 @@ import LoadingSpinner from "@/components/loading-spinner";
 import PromptSetCardSkeletonCard from "./components/prompt-set-card-skeleton";
 import { errorMessage } from "@/utils/error-message";
 import { useInfinitePromptSets } from "@/lib/react-query/use-infinite-prompt-sets";
-
 import { Search as SearchIcon, SlidersHorizontal } from "lucide-react";
 import ControlsPanel from "./components/controls-panel";
+import type { Filters } from "./types";
 
 export default function PromptSetsPage() {
   const {
@@ -23,20 +23,7 @@ export default function PromptSetsPage() {
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  type SortOption =
-    | ""
-    | "createdAt-asc"
-    | "createdAt-desc"
-    | "updatedAt-asc"
-    | "updatedAt-desc";
-
-  const [filters, setFilters] = useState<{
-    sortBy: SortOption;
-    avgMin: string;
-    avgMax: string;
-    promptsMin: string;
-    promptsMax: string;
-  }>({
+  const [filters, setFilters] = useState<Filters>({
     sortBy: "",
     avgMin: "",
     avgMax: "",
@@ -55,7 +42,6 @@ export default function PromptSetsPage() {
 
   const applyFilters = () => setFiltersOpen(false);
 
-  // filter + search + sort logic
   const processedList = useMemo(() => {
     if (!promptSets) return [];
 
@@ -67,20 +53,20 @@ export default function PromptSetsPage() {
       list = list.filter((p) => {
         const title = p.title?.toLowerCase() || "";
         const desc = p.description?.toLowerCase() || "";
-        const tags = (p.tags?.join(" ") ?? "").toLowerCase() || "";
+        const tags = (p.tags?.join(" ") ?? "").toLowerCase();
         return title.includes(q) || desc.includes(q) || tags.includes(q);
       });
     }
 
     // RANGE FILTERS
-    list = list.filter((p) => {
-      const avgMin = filters.avgMin !== "" ? Number(filters.avgMin) : null;
-      const avgMax = filters.avgMax !== "" ? Number(filters.avgMax) : null;
-      const promptsMin =
-        filters.promptsMin !== "" ? Number(filters.promptsMin) : null;
-      const promptsMax =
-        filters.promptsMax !== "" ? Number(filters.promptsMax) : null;
+    const avgMin = filters.avgMin !== "" ? Number(filters.avgMin) : null;
+    const avgMax = filters.avgMax !== "" ? Number(filters.avgMax) : null;
+    const promptsMin =
+      filters.promptsMin !== "" ? Number(filters.promptsMin) : null;
+    const promptsMax =
+      filters.promptsMax !== "" ? Number(filters.promptsMax) : null;
 
+    list = list.filter((p) => {
       if (avgMin !== null && !isNaN(avgMin) && p.averageScore < avgMin)
         return false;
       if (avgMax !== null && !isNaN(avgMax) && p.averageScore > avgMax)
@@ -97,12 +83,10 @@ export default function PromptSetsPage() {
         p.totalPromptsCount > promptsMax
       )
         return false;
-
       return true;
     });
 
     // SORTING
-
     if (filters.sortBy) {
       const [field, order] = filters.sortBy.split("-");
 
@@ -164,7 +148,7 @@ export default function PromptSetsPage() {
 
         <button
           onClick={() => setFiltersOpen(true)}
-          className="flex items-center gap-2 px-3 py-2 border border-gray-400 rounded-lg  hover:bg-gray-100"
+          className="flex items-center gap-2 px-3 py-2 border border-gray-400 rounded-lg hover:bg-gray-100"
         >
           <SlidersHorizontal size={18} />
           Filters
