@@ -1,7 +1,7 @@
 import { FileService, RawFile } from "@/services/file.service";
 import { EvaluationService } from "@/services/evaluation.service";
-import Evaluations from "./components/evaluations";
-import Header from "./components/header";
+import Evaluations from "./components/Evaluations";
+import Header from "./components/Header";
 import { getUser } from "@/lib/actions/auth";
 import { FileTypes } from "@/database/types";
 import { NULL_UUID } from "@/lib/constants";
