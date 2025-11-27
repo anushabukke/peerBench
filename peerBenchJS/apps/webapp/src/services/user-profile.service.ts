@@ -1,8 +1,10 @@
 import { db } from "@/database/client";
 import { eq, getViewSelectedFields, sql } from "drizzle-orm";
-import { userProfileTable, userStatsView, usersView } from "@/database/schema";
+import { userProfileTable, userStatsView, usersView, promptsTable, quickFeedbacksTable, hashRegistrationsTable } from "@/database/schema";
 import { DbOptions } from "@/types/db";
 import { withTxOrDb } from "@/database/helpers";
+import { ApiError } from "@/errors/api-error";
+import { and } from "drizzle-orm";
 
 export class ProfileService {
   static async getUserStats(
@@ -17,6 +19,39 @@ export class ProfileService {
         .where(eq(userStatsView.id, options.userId));
 
       return result;
+    }, options.tx);
+  }
+
+  static async getPromptsWithThreePlusFeedbacks(
+    options: DbOptions & {
+      userId: string;
+    }
+  ) {
+    return withTxOrDb(async (tx) => {
+      // Query to get prompts with 3+ positive feedbacks
+      // Using a subquery to count feedbacks per prompt
+      const promptsWithCounts = await tx
+        .select({
+          promptId: promptsTable.id,
+          feedbackCount: sql<number>`
+            (SELECT COUNT(*)::int
+             FROM ${quickFeedbacksTable}
+             WHERE ${quickFeedbacksTable.promptId} = ${promptsTable.id}
+             AND ${quickFeedbacksTable.opinion} = 'positive')
+          `.as("feedback_count"),
+        })
+        .from(promptsTable)
+        .innerJoin(
+          hashRegistrationsTable,
+          and(
+            eq(hashRegistrationsTable.cid, promptsTable.hashCIDRegistration),
+            eq(hashRegistrationsTable.sha256, promptsTable.hashSha256Registration)
+          )
+        )
+        .where(eq(hashRegistrationsTable.uploaderId, options.userId));
+
+      // Filter in JavaScript to count prompts with 3+ feedbacks
+      return promptsWithCounts.filter((p) => p.feedbackCount >= 3).length;
     }, options.tx);
   }
 
@@ -50,90 +85,57 @@ export class ProfileService {
     }, options.tx);
   }
 
-  /**
-   * @deprecated AI Generated code, don't use if you don't know what you are doing
-   */
-  static async getProfileByUserId(userId: string): Promise<UserProfile | null> {
-    try {
-      const result = await db
+  static async updateUserProfile(
+    data: {
+      displayName?: string | null;
+      github?: string | null;
+      website?: string | null;
+      bluesky?: string | null;
+      mastodon?: string | null;
+      twitter?: string | null;
+    },
+    options: DbOptions & {
+      userId: string;
+    }
+  ) {
+    return withTxOrDb(async (tx) => {
+      const updateSubQuery = tx.$with("sq_update").as(
+        tx
+          .update(userProfileTable)
+          .set({
+            displayName: data.displayName,
+            github: data.github,
+            website: data.website,
+            bluesky: data.bluesky,
+            mastodon: data.mastodon,
+            twitter: data.twitter,
+          })
+          .where(eq(userProfileTable.userId, options.userId))
+      );
+
+      // Get the profile data
+      const profile = await tx
+        .with(updateSubQuery)
         .select()
-        .from(userProfileTable)
-        .where(eq(userProfileTable.userId, userId))
-        .limit(1);
+        .from(usersView)
+        .where(eq(usersView.id, options.userId))
+        .then((result) => result[0]);
 
-      return result.length > 0 ? result[0]! : null;
-    } catch (error) {
-      console.error("Error getting user profile:", error);
-      return null;
-    }
-  }
-
-  /**
-   * @deprecated AI Generated code, don't use if you don't know what you are doing
-   */
-  static async createProfile(
-    userId: string,
-    profile: UserProfileUpdate
-  ): Promise<UserProfile | null> {
-    try {
-      const result = await db
-        .insert(userProfileTable)
-        .values({
-          userId,
-          ...profile,
-        })
-        .returning();
-
-      return result.length > 0 ? result[0]! : null;
-    } catch (error) {
-      console.error("Error creating user profile:", error);
-      return null;
-    }
-  }
-
-  /**
-   * @deprecated AI Generated code, don't use if you don't know what you are doing
-   */
-  static async updateProfile(
-    userId: string,
-    profile: UserProfileUpdate
-  ): Promise<UserProfile | null> {
-    try {
-      const result = await db
-        .update(userProfileTable)
-        .set({
-          ...profile,
-          updatedAt: new Date(),
-        })
-        .where(eq(userProfileTable.userId, userId))
-        .returning();
-
-      return result.length > 0 ? result[0]! : null;
-    } catch (error) {
-      console.error("Error updating user profile:", error);
-      return null;
-    }
-  }
-
-  /**
-   * @deprecated AI Generated code, don't use if you don't know what you are doing
-   */
-  static async upsertProfile(
-    userId: string,
-    profile: UserProfileUpdate
-  ): Promise<UserProfile | null> {
-    try {
-      const existingProfile = await this.getProfileByUserId(userId);
-
-      if (existingProfile) {
-        return await this.updateProfile(userId, profile);
-      } else {
-        return await this.createProfile(userId, profile);
+      if (!profile) {
+        throw ApiError.notFound("User not found");
       }
-    } catch (error) {
-      console.error("Error upserting user profile:", error);
-      return null;
-    }
+
+      // Return the whole profile data with the updated fields
+      return {
+        ...profile,
+        displayName: data.displayName,
+        github: data.github,
+        website: data.website,
+        bluesky: data.bluesky,
+        mastodon: data.mastodon,
+        twitter: data.twitter,
+      };
+    }, options.tx);
   }
 
   /**
@@ -160,35 +162,10 @@ export class ProfileService {
   }
 }
 
-export type UserProfileFuture = Awaited<
+export type UserProfile = Awaited<
   ReturnType<typeof ProfileService.getUserProfile>
 >;
 
-/**
- * @deprecated AI Generated code, don't use if you don't know what you are doing
- */
-export interface UserProfile {
-  id: number;
-  userId: string;
-  displayName: string | null;
-  github: string | null;
-  website: string | null;
-  bluesky: string | null;
-  mastodon: string | null;
-  twitter: string | null;
-  invitedBy: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-/**
- * @deprecated AI Generated code, don't use if you don't know what you are doing
- */
-export interface UserProfileUpdate {
-  displayName?: string | null;
-  github?: string | null;
-  website?: string | null;
-  bluesky?: string | null;
-  mastodon?: string | null;
-  twitter?: string | null;
-}
+export type UserProfileUpdate = Awaited<
+  ReturnType<typeof ProfileService.updateUserProfile>
+>;

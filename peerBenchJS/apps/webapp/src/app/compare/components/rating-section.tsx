@@ -12,7 +12,7 @@ import {
   calculateSHA256,
   PromptResponse,
   ScoringMethods,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { errorMessage } from "@/utils/error-message";
 import { stableStringify } from "@/lib/stable-stringify";
 import { usePromptAPI } from "@/lib/hooks/use-prompt-api";
@@ -148,8 +148,8 @@ export default function RatingSection() {
     try {
       // 1. Check if prompt already exists by content hash
       const checkResult = await promptAPI.checkByHash({
-        fullPromptCID: ctx.generatedPrompt.fullPrompt.cid,
-        fullPromptSHA256: ctx.generatedPrompt.fullPrompt.sha256,
+        fullPromptCID: ctx.generatedPrompt.fullPromptCID,
+        fullPromptSHA256: ctx.generatedPrompt.fullPromptSHA256,
         promptSetId: ctx.selectedPromptSet.id!,
       });
 
@@ -169,8 +169,8 @@ export default function RatingSection() {
         }
 
         // If the prompt exists then we need to rebuild the response objects to include the correct prompt id
-        comparison.responseA!.prompt.did = checkResult.promptId!;
-        comparison.responseB!.prompt.did = checkResult.promptId!;
+        comparison.responseA!.prompt.promptUUID = checkResult.promptId!;
+        comparison.responseB!.prompt.promptUUID = checkResult.promptId!;
       }
 
       // 3. Save both responses
@@ -271,7 +271,7 @@ export default function RatingSection() {
         modelAId: comparison.modelA.id,
         modelBId: comparison.modelB.id,
         winnerId,
-        promptId: ctx.generatedPrompt.did,
+        promptId: ctx.generatedPrompt.promptUUID,
         modelAScore: scoreAValue,
         modelBScore: scoreBValue,
         modelAResponseId: comparison.responseA!.did,
@@ -282,12 +282,12 @@ export default function RatingSection() {
       ctx.setComparisons((prev) =>
         prev.map((c, idx) =>
           idx === prev.length - 1
-            ? { 
-                ...c, 
-                isRevealed: true, 
-                ratingA, 
-                ratingB, 
-                scoreA, 
+            ? {
+                ...c,
+                isRevealed: true,
+                ratingA,
+                ratingB,
+                scoreA,
                 scoreB,
                 matchId: matchResult.data.matchId,
               }
@@ -327,10 +327,10 @@ export default function RatingSection() {
 
     try {
       const result = await modelAPI.shareModelMatch(comparison.matchId);
-      
+
       // Copy to clipboard
       await navigator.clipboard.writeText(result.data.shareUrl);
-      
+
       toast.update(loadingToast, {
         render: "Share link copied to clipboard!",
         type: "success",
@@ -518,12 +518,9 @@ async function generateResponse(
     throw new Error(`Provider ${model.provider} not initialized`);
   }
 
-  const rawResponse = await provider.implementation.forward(
-    prompt.fullPrompt.data,
-    {
-      model: model.modelId,
-    }
-  );
+  const rawResponse = await provider.implementation.forward(prompt.fullPrompt, {
+    model: model.modelId,
+  });
 
   const response: PromptResponse = {
     did: uuidv7(),

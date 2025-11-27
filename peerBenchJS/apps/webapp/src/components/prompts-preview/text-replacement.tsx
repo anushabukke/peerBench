@@ -1,4 +1,4 @@
-import { Prompt } from "@peerbench/sdk";
+import { Prompt } from "peerbench";
 
 interface TextReplacementProps {
   prompt: Prompt;
@@ -12,7 +12,7 @@ export default function TextReplacement({
   return (
     <>
       <p className="font-medium text-gray-800 dark:text-gray-200">
-        {prompt.question.data}
+        {prompt.prompt}
       </p>
       <div className="mt-2 p-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded">
         <p className="text-sm text-orange-800 dark:text-orange-200 font-medium">

@@ -10,6 +10,9 @@ import Alert from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import Link from "next/link";
 import { ExternalLink, X } from "lucide-react";
+import PromptSetSelect, {
+  type PromptSetSelectOption,
+} from "@/components/prompt-set-select";
 import type {
   SimpleSimulationConfig,
   RealisticSimulationConfig,
@@ -59,13 +62,20 @@ export function SimulationControlPanel() {
   const [realisticConfig, setRealisticConfig] =
     useState<RealisticSimulationConfig>(DEFAULT_REALISTIC_SIMULATION_CONFIG);
 
+  // Selected prompt set for submitToExisting
+  const [selectedPromptSet, setSelectedPromptSet] =
+    useState<PromptSetSelectOption | null>(null);
+
   const handleRunSimulation = async () => {
     setIsRunning(true);
     setError(null);
     setResult(null);
 
     try {
-      const config = mode === "simple" ? simpleConfig : realisticConfig;
+      const config = mode === "simple" ? simpleConfig : {
+        ...realisticConfig,
+        targetPromptSetId: selectedPromptSet?.id,
+      };
 
       const response = await fetch("/api/v2/admin/simulate/run", {
         method: "POST",
@@ -371,6 +381,65 @@ export function SimulationControlPanel() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="realistic-feedbacks-min">
+                    Min Feedbacks per User
+                  </Label>
+                  <Input
+                    id="realistic-feedbacks-min"
+                    type="number"
+                    value={realisticConfig.feedbacksPerUser?.min ?? 0}
+                    onChange={(e) =>
+                      setRealisticConfig({
+                        ...realisticConfig,
+                        feedbacksPerUser: {
+                          min: parseInt(e.target.value),
+                          max:
+                            realisticConfig.feedbacksPerUser?.max ??
+                            parseInt(e.target.value),
+                        },
+                      })
+                    }
+                    min={0}
+                    max={50}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Number of feedbacks each user will try to provide
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="realistic-feedbacks-max">
+                    Max Feedbacks per User
+                  </Label>
+                  <Input
+                    id="realistic-feedbacks-max"
+                    type="number"
+                    value={
+                      realisticConfig.feedbacksPerUser?.max ??
+                      realisticConfig.feedbacksPerUser?.min ??
+                      0
+                    }
+                    onChange={(e) =>
+                      setRealisticConfig({
+                        ...realisticConfig,
+                        feedbacksPerUser: {
+                          ...realisticConfig.feedbacksPerUser,
+                          min: realisticConfig.feedbacksPerUser?.min ?? 0,
+                          max: parseInt(e.target.value),
+                        },
+                      })
+                    }
+                    min={realisticConfig.feedbacksPerUser?.min ?? 0}
+                    max={50}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Will stop early if all available prompts are reviewed
+                  </p>
+                </div>
+              </div>
+
               <div className="space-y-3 pt-4">
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-2">
@@ -452,30 +521,56 @@ export function SimulationControlPanel() {
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="realistic-submit-existing"
-                    checked={realisticConfig.submitToExisting ?? false}
-                    disabled={
-                      realisticConfig.in_memory_only ||
-                      !realisticConfig.write_to_db
-                    }
-                    onCheckedChange={(checked) =>
-                      setRealisticConfig({
-                        ...realisticConfig,
-                        submitToExisting: !!checked,
-                        createPromptSets: checked
-                          ? false
-                          : realisticConfig.createPromptSets,
-                      })
-                    }
-                  />
-                  <Label htmlFor="realistic-submit-existing">
-                    Submit to Existing Prompt Sets
-                  </Label>
-                  <span className="text-xs text-gray-500">
-                    (uses LLM to match style)
-                  </span>
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="realistic-submit-existing"
+                      checked={realisticConfig.submitToExisting ?? false}
+                      disabled={
+                        realisticConfig.in_memory_only ||
+                        !realisticConfig.write_to_db
+                      }
+                      onCheckedChange={(checked) => {
+                        setRealisticConfig({
+                          ...realisticConfig,
+                          submitToExisting: !!checked,
+                          createPromptSets: checked
+                            ? false
+                            : realisticConfig.createPromptSets,
+                        });
+                        if (!checked) {
+                          setSelectedPromptSet(null);
+                        }
+                      }}
+                    />
+                    <Label htmlFor="realistic-submit-existing">
+                      Submit to Existing Prompt Sets
+                    </Label>
+                    <span className="text-xs text-gray-500">
+                      (uses LLM to match style)
+                    </span>
+                  </div>
+
+                  {realisticConfig.submitToExisting && (
+                    <div className="ml-6 space-y-2">
+                      <Label htmlFor="target-prompt-set">
+                        Select Target Prompt Set (Optional)
+                      </Label>
+                      <PromptSetSelect
+                        id="target-prompt-set"
+                        value={selectedPromptSet}
+                        onChange={setSelectedPromptSet}
+                        placeholder="Select a prompt set or leave empty for random"
+                        disabled={
+                          realisticConfig.in_memory_only ||
+                          !realisticConfig.write_to_db
+                        }
+                      />
+                      <p className="text-xs text-gray-500">
+                        Leave empty to randomly select a prompt set for each user
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center space-x-2 pt-2">
@@ -651,8 +746,9 @@ export function SimulationControlPanel() {
               </Alert>
             )}
 
-            {/* Top 5 Benchmarks/Prompt Sets */}
-            {result.users.length > 0 && (
+            {/* Top 5 Benchmarks/Prompt Sets - only show if new ones were created */}
+            {result.users.length > 0 &&
+             !("submitToExisting" in result.config && result.config.submitToExisting) && (
               <div className="mt-6">
                 <h3 className="font-semibold text-lg mb-3">
                   Top 5 Benchmarks/Prompt Sets Created
@@ -725,6 +821,24 @@ export function SimulationControlPanel() {
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {/* Existing Prompt Set Info - show when submitToExisting is true */}
+            {"submitToExisting" in result.config && result.config.submitToExisting && (
+              <div className="mt-6">
+                <Alert variant="info" className="p-4">
+                  <div className="font-semibold mb-2">
+                    📝 Submitted to Existing Prompt Set
+                  </div>
+                  <p className="text-sm">
+                    Prompts were generated based on existing examples and added to
+                    {selectedPromptSet
+                      ? ` the selected prompt set "${selectedPromptSet.title}" (ID: ${selectedPromptSet.id})`
+                      : " randomly selected prompt sets"}.
+                    No new prompt sets were created.
+                  </p>
+                </Alert>
               </div>
             )}
 

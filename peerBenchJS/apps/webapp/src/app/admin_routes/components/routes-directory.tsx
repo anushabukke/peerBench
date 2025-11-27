@@ -62,9 +62,10 @@ const PAGE_ROUTES: Route[] = [
   // Stats & Admin
   { path: "/stats", type: "page", isDynamic: false, category: "Stats" },
   { path: "/admin", type: "page", isDynamic: false, category: "Admin" },
-  { path: "/adminCalc", type: "page", isDynamic: false, category: "Admin" },
+  { path: "/simScores001", type: "page", isDynamic: false, category: "Admin" },
   { path: "/adminSimulate", type: "page", isDynamic: false, category: "Admin" },
-  { path: "/beta_scores002", type: "page", isDynamic: false, category: "Admin" },
+  { path: "/simScores002", type: "page", isDynamic: false, category: "Admin" },
+  { path: "/simUserWeightedAIRanking", type: "page", isDynamic: false, category: "Admin" },
 ];
 
 const API_ROUTES: Route[] = [
@@ -132,6 +133,7 @@ const API_ROUTES: Route[] = [
   { path: "/api/v2/stats/user-registrations", type: "api", method: "GET", isDynamic: false, category: "Stats" },
   { path: "/api/v2/stats/users", type: "api", method: "GET", isDynamic: false, category: "Stats" },
   { path: "/api/v2/leaderboard/curated", type: "api", method: "GET", isDynamic: false, category: "Stats" },
+  { path: "/api/v2/leaderboard/simUserWeighted", type: "api", method: "GET", isDynamic: false, category: "Stats" },
 
   // File & Data APIs
   { path: "/api/v1/files", type: "api", method: "POST", isDynamic: false, category: "Files" },

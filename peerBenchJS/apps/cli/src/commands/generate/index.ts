@@ -7,7 +7,7 @@ import {
 } from "@/validation/collected-data-schema";
 import { FileSchema } from "@/validation/file-schema";
 import { JSONSchema } from "@/validation/json-schema";
-import { AbstractGenerator } from "@peerbench/sdk";
+import { AbstractGenerator } from "peerbench";
 import { z } from "zod";
 import { savePrompts } from "./save-prompts";
 import { hashFile } from "@/utils/hash-file";

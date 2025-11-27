@@ -366,6 +366,7 @@ export const XAIModels = {
  */
 export const GoogleModels = {
   Gemini_2_0_Flash: "gemini-2.0-flash",
+  Gemini_2_0_Flash_Lite: "gemini-2.0-flash-lite",
   Gemini_2_5_Flash_Lite: "gemini-2.5-flash-lite",
   Gemini_2_5_Pro: "gemini-2.5-pro",
 } as const;

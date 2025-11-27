@@ -4,7 +4,8 @@ import { ApiKeyProvider, ApiKeyProviders } from "@/database/types";
 import { ApiError } from "@/errors/api-error";
 import { DbOptions } from "@/types/db";
 import { tryReadResponse } from "@/utils/try-read-response";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import { randomBytes } from "crypto";
 
 const OPENROUTER_API_KEY_PROVISIONING_URL = "https://openrouter.ai/api/v1/keys";
 const OPENROUTER_API_KEY_USAGE_LIMIT = 1; // $1
@@ -57,6 +58,63 @@ export class ApiKeyService {
     }, options?.tx);
   }
 
+  static async getAllApiKeysByUser(
+    options: DbOptions & {
+      assignedUserId: string;
+      provider: ApiKeyProvider;
+    }
+  ) {
+    return withTxOrDb(async (tx) => {
+      const apiKeys = await tx
+        .select()
+        .from(apiKeysTable)
+        .where(
+          and(
+            eq(apiKeysTable.assignedUserId, options.assignedUserId),
+            eq(apiKeysTable.provider, options.provider)
+          )
+        )
+        .orderBy(desc(apiKeysTable.createdAt));
+
+      return apiKeys;
+    }, options?.tx);
+  }
+
+  static async getApiKeyByKey(
+    key: string,
+    options?: DbOptions
+  ) {
+    return withTxOrDb(async (tx) => {
+      const [apiKey] = await tx
+        .select()
+        .from(apiKeysTable)
+        .where(eq(apiKeysTable.key, key))
+        .limit(1);
+
+      return apiKey;
+    }, options?.tx);
+  }
+
+  static async deleteApiKey(
+    id: number,
+    assignedUserId: string,
+    options?: DbOptions
+  ) {
+    return withTxOrDb(async (tx) => {
+      const [deleted] = await tx
+        .delete(apiKeysTable)
+        .where(
+          and(
+            eq(apiKeysTable.id, id),
+            eq(apiKeysTable.assignedUserId, assignedUserId)
+          )
+        )
+        .returning();
+
+      return deleted;
+    }, options?.tx);
+  }
+
   static async upsertOpenRouterApiKey(
     data: { assignedUserId: string },
     options?: DbOptions
@@ -104,6 +162,89 @@ export class ApiKeyService {
         { tx }
       );
     }, options?.tx);
+  }
+
+  /**
+   * Generate a new PeerBench API key
+   * Format: pb_<40 random hex chars>
+   */
+  static generatePeerBenchApiKey(): string {
+    const randomHex = randomBytes(20).toString("hex");
+    return `pb_${randomHex}`;
+  }
+
+  /**
+   * Create a new PeerBench API key for a user
+   */
+  static async createPeerBenchApiKey(
+    data: { assignedUserId: string; name?: string },
+    options?: DbOptions
+  ) {
+    const key = this.generatePeerBenchApiKey();
+
+    return this.insertApiKey(
+      {
+        key,
+        assignedUserId: data.assignedUserId,
+        provider: ApiKeyProviders.peerbench,
+        metadata: {
+          name: data.name || `API Key ${new Date().toISOString().split("T")[0]}`,
+          createdAt: new Date().toISOString(),
+        },
+      },
+      options
+    );
+  }
+
+  /**
+   * List all PeerBench API keys for a user (with masked keys)
+   */
+  static async listPeerBenchApiKeys(
+    assignedUserId: string,
+    options?: DbOptions
+  ) {
+    const apiKeys = await this.getAllApiKeysByUser({
+      assignedUserId,
+      provider: ApiKeyProviders.peerbench,
+      ...options,
+    });
+
+    // Mask the keys for security (show only first 8 and last 4 characters)
+    return apiKeys.map((key) => ({
+      ...key,
+      key: this.maskApiKey(key.key),
+    }));
+  }
+
+  /**
+   * Mask an API key for display
+   * Example: pb_abc...xyz
+   */
+  static maskApiKey(key: string): string {
+    if (key.length <= 12) return key;
+    const prefix = key.substring(0, 8); // pb_xxxxx
+    const suffix = key.substring(key.length - 4); // last 4 chars
+    return `${prefix}...${suffix}`;
+  }
+
+  /**
+   * Validate a PeerBench API key and return the user ID
+   */
+  static async validatePeerBenchApiKey(
+    key: string,
+    options?: DbOptions
+  ): Promise<string | null> {
+    if (!key.startsWith("pb_")) {
+      return null;
+    }
+
+    const apiKey = await this.getApiKeyByKey(key, options);
+
+    if (!apiKey || apiKey.provider !== ApiKeyProviders.peerbench) {
+      return null;
+    }
+
+    return apiKey.assignedUserId;
   }
 }
 

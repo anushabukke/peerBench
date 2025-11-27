@@ -1,10 +1,9 @@
 import { PromptService } from "@/services/prompt.service";
 import type { SearchParams } from "../../page";
-import PromptSection from "../prompt-section";
 import PromptNotFound from "../prompt-not-found";
 import { PromptStatuses } from "@/database/types";
 import PromptResponses from "@/components/prompt-responses";
-import Feedback from "../feedback";
+import FeedbackWithOverlay from "../feedback-with-overlay";
 import { PromptComments } from "@/components/prompt-comments";
 
 export interface SectionsProps {
@@ -24,9 +23,10 @@ export default async function Sections({ filters, userId }: SectionsProps) {
     },
     filters: {
       excludeReviewedByUserId: userId, // Only show prompts the user hasn't reviewed yet
-      status: PromptStatuses.included, // Don't list excluded Prompts
+      status: [PromptStatuses.included], // Don't list excluded Prompts
 
-      promptSetId: filters.promptSetId,
+      promptSetId:
+        filters.promptSetId !== undefined ? [filters.promptSetId] : undefined,
       tags: filters.tags,
       type: filters.type,
       uploaderId: filters.uploaderId,
@@ -56,9 +56,12 @@ export default async function Sections({ filters, userId }: SectionsProps) {
 
   return (
     <>
-      <Feedback promptId={prompt.id} />
-      <PromptSection prompt={prompt} />
-      <PromptComments promptId={prompt.id} variant="accordion" defaultOpen={false} />
+      <FeedbackWithOverlay promptId={prompt.id} prompt={prompt} />
+      <PromptComments
+        promptId={prompt.id}
+        variant="accordion"
+        defaultOpen={false}
+      />
       <div className="h-48 bg-blue-50 mb-12"></div>
       <PromptResponses
         promptId={prompt.id}

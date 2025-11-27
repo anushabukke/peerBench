@@ -104,17 +104,13 @@ async function main() {
   // Create mock responses for testing
   const mockResponse: PromptResponse = {
     prompt: {
-      did: "mock-id",
-      question: {
-        data: "What is the capital of France?",
-        cid: "mock-cid",
-        sha256: "mock-sha",
-      },
-      fullPrompt: {
-        data: "What is the capital of France?",
-        cid: "mock-cid",
-        sha256: "mock-sha",
-      },
+      promptUUID: "mock-id",
+      prompt: "What is the capital of France?",
+      promptCID: "mock-cid",
+      promptSHA256: "mock-sha",
+      fullPrompt: "What is the capital of France?",
+      fullPromptCID: "mock-cid",
+      fullPromptSHA256: "mock-sha",
       answer: "Paris",
       answerKey: "A",
       options: {

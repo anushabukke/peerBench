@@ -1,9 +1,7 @@
-import { getUser } from "@/lib/actions/auth";
-import { CuratedLeaderboardView } from "./components/curated-leaderboard-view";
+import { CuratedLeaderboard } from "./components/curated-leaderboard";
+import { Filters } from "@/components/prompts-infinite-list/components/filters";
 
 export default async function CuratedPage() {
-  const user = await getUser();
-
   return (
     <main className="flex flex-col items-center justify-center mx-auto px-4 py-8 max-w-7xl">
       <div className="w-full mb-8">
@@ -15,10 +13,9 @@ export default async function CuratedPage() {
         </p>
       </div>
 
-      <CuratedLeaderboardView
-        className="w-full"
-        isUserLoggedIn={user !== undefined}
-      />
+      <CuratedLeaderboard />
+
+      <Filters />
     </main>
   );
 }

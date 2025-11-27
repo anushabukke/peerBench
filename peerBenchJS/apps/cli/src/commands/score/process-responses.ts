@@ -6,18 +6,22 @@ import {
   AbstractScorer,
   PromptResponse,
   removeDIDPrefix,
-} from "@peerbench/sdk";
+} from "peerbench";
 
 export async function processResponses(
   responses: PromptResponse[],
   scorer: AbstractScorer,
-  stream: JsonArrayStream
+  stream: JsonArrayStream,
+  options?: Record<string, any>
 ) {
   for (const response of responses) {
     try {
-      const score = await scorer.scoreOne(response);
+      // Pass options to scoreOne if provided (needed for LLMJudgeScorer)
+      const score = options
+        ? await scorer.scoreOne(response, options)
+        : await scorer.scoreOne(response);
       logger.info(
-        `Score for the Response of Prompt ${removeDIDPrefix(response.prompt.did)}: ${score}`
+        `Score for the Response of Prompt ${removeDIDPrefix(response.prompt.promptUUID)}: ${score}`
       );
 
       // Score has the same structure as the Response, but with
@@ -30,7 +34,7 @@ export async function processResponses(
       const error = ensureError(err);
       logger.error(
         `Error while scoring the Response of Prompt ${removeDIDPrefix(
-          response.prompt.did
+          response.prompt.promptUUID
         )}: ${env().isDev ? error.stack : error.message}`
       );
     }

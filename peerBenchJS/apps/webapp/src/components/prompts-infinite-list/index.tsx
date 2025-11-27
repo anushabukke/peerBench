@@ -1,26 +1,20 @@
 "use client";
 
-import { cn } from "@/utils/cn";
 import { PromptSearchFiltersProps } from "../prompt-search-filters";
 import { PromptSearchFiltersContextProvider } from "../prompt-search-filters/context";
 import { Results } from "./components/results";
-import { Search } from "./components/search";
 import { ComponentContextProvider } from "./context";
+import { Filters } from "./components/filters";
 
 export interface PromptsInfiniteListProps {
-  isUserLoggedIn: boolean;
   fixedFilters?: PromptSearchFiltersProps["fixedFilters"];
-  className?: string;
   canManagePromptStatus?: boolean;
 }
 
-function Comp({ isUserLoggedIn, className, canManagePromptStatus }: PromptsInfiniteListProps) {
+function Comp({ canManagePromptStatus }: PromptsInfiniteListProps) {
   return (
     <>
-      <div className={cn("space-y-4 mb-8", className)}>
-        <Search isUserLoggedIn={isUserLoggedIn} canManagePromptStatus={canManagePromptStatus} />
-      </div>
-
+      <Filters canManagePromptStatus={canManagePromptStatus} />
       <Results />
     </>
   );

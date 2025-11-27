@@ -1,5 +1,5 @@
 import { PaginationOptions } from "@/types/db";
-import { MaybePromise } from "@peerbench/sdk";
+import { MaybePromise } from "peerbench";
 import { ColumnsSelection, SQL } from "drizzle-orm";
 import { PgSelect } from "drizzle-orm/pg-core";
 import {

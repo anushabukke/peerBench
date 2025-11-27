@@ -1,6 +1,6 @@
 import { program } from "@/core/program";
 import { getCollector } from "@/collectors";
-import { AbstractCollector } from "@peerbench/sdk";
+import { AbstractCollector } from "peerbench";
 import { saveCollectedData } from "./save-collected-data";
 import { logger } from "@/core/logger";
 import { hashFile } from "@/utils/hash-file";

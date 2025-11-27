@@ -4,7 +4,7 @@ import { getUser } from "@/lib/actions/auth";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Suspense } from "react";
-import { PromptTypes } from "@peerbench/sdk";
+import { PromptTypes } from "peerbench";
 import { StringBool } from "@/validation/string-bool";
 import Sections from "./components/sections";
 import SectionsSkeleton from "./components/sections/skeleton";
@@ -13,6 +13,7 @@ import { PromptSearchFiltersContextProvider } from "@/components/prompt-search-f
 import PromptSetSelectFilter from "@/components/prompt-search-filters/components/prompt-set-select-filter";
 import { PromptSetService } from "@/services/promptset.service";
 import { convertToQueryParams } from "@/utils/client/convert-to-query-params";
+import { ProfileService } from "@/services/user-profile.service";
 
 // Prompt Set ID if the user doesn't have any joined Prompt Set yet
 const DEFAULT_PROMPT_SET_ID = 0;
@@ -75,8 +76,17 @@ export default async function Page(props: {
   let urlParams = "";
   let requiresRedirect = false;
 
+  // Fetch uploader profile if uploaderId is set
+  let uploaderProfile = null;
+  if (searchParams.uploaderId) {
+    uploaderProfile = await ProfileService.getUserProfile({
+      userId: searchParams.uploaderId,
+    });
+  }
+
   // If user is not specified a Prompt Set filter, we can set one
-  if (searchParams.promptSetId === undefined) {
+  // UNLESS they specified an uploader filter (for reviewing a specific user's uploads)
+  if (searchParams.promptSetId === undefined && searchParams.uploaderId === undefined) {
     const recentPromptSet = await PromptSetService.getRecentJoinedPromptSet({
       userId: user.id,
     });
@@ -116,14 +126,22 @@ export default async function Page(props: {
           <div className="text-gray-600 text-sm">
             Reviewing:
           </div>
-          <PromptSetSelectFilter
-            showIcon={false}
-            showLabel={false}
-            className="w-[300px] opacity-60 hover:opacity-100 transition-opacity"
-          />
-          <div className="text-gray-600 text-sm">
-            prompts
-          </div>
+          {searchParams.uploaderId ? (
+            <div className="text-gray-900 font-medium">
+              {uploaderProfile?.displayName || "User"}&apos;s uploaded prompts
+            </div>
+          ) : (
+            <>
+              <PromptSetSelectFilter
+                showIcon={false}
+                showLabel={false}
+                className="w-[300px] opacity-60 hover:opacity-100 transition-opacity"
+              />
+              <div className="text-gray-600 text-sm">
+                prompts
+              </div>
+            </>
+          )}
         </div>
 
         <Filters />

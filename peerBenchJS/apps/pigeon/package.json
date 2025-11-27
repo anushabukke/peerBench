@@ -31,7 +31,7 @@
   "dependencies": {
     "@dotenvx/dotenvx": "^1.39.1",
     "@inquirer/prompts": "^7.4.1",
-    "@peerbench/sdk": "*",
+    "peerbench": "*",
     "ansis": "^3.17.0",
     "async-mutex": "^0.5.0",
     "commander": "^13.1.0",

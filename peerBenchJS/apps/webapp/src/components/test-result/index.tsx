@@ -3,7 +3,7 @@
 import { cn } from "@/utils/cn";
 import { ChevronDown } from "lucide-react";
 import { DateTime } from "luxon";
-import { formatMs, tryParseJson } from "@peerbench/sdk";
+import { formatMs, tryParseJson } from "peerbench";
 import { useCallback, useMemo, useState, useEffect } from "react";
 import { ReviewButtons } from "./review-buttons";
 import { ReviewModal } from "../modals/review-modal";

@@ -2,14 +2,14 @@ import { logger } from "@/core/logger";
 import { program } from "@/core/program";
 import { v7 as uuidv7 } from "uuid";
 import {
-  AbstractTaskSchema,
+  AbstractParser,
   BaseLLMProvider,
   formatMs,
   ModelInfo,
-  PBTaskSchema,
-  Task,
-  TaskReader,
-} from "@peerbench/sdk";
+  PBParser,
+  ParseResult,
+  DataParser,
+} from "peerbench";
 import { FileSchema } from "@/validation/file-schema";
 import { parseModelOption } from "./parse-model-option";
 import { getProvider } from "@/providers";
@@ -30,7 +30,7 @@ export const promptCommand = program
     "Path to the task files",
     async (
       value,
-      previous?: Promise<{ schema: AbstractTaskSchema; data: Task }[]>
+      previous?: Promise<{ parser: AbstractParser; data: ParseResult; path: string }[]>
     ) => {
       const path = FileSchema({
         message: "Task file doesn't exist",
@@ -38,17 +38,18 @@ export const promptCommand = program
       }).parse(value);
 
       // Ensure the given Task file follows peerBench format
-      const taskInfo = await TaskReader.readFromFile(path);
-      const pbSchema = new PBTaskSchema(); // TODO: Should be able to access the identifier without instantiating the object
-      if (taskInfo.schema.identifier !== pbSchema.identifier) {
+      const taskInfo = await DataParser.parseFile(path);
+      const pbParser = new PBParser();
+      if (taskInfo.parser.getIdentifier() !== pbParser.getIdentifier()) {
         throw new Error(`Task file ${path} doesn't follow peerBench's schema.`);
       }
 
       return [
         ...((await previous) || []),
         {
-          schema: taskInfo.schema,
-          data: taskInfo.task,
+          parser: taskInfo.parser,
+          data: taskInfo.result,
+          path,
         },
       ];
     }
@@ -96,7 +97,7 @@ export const promptCommand = program
   .option("--system <prompt>", "Defines a custom system Prompt")
   .action(
     async (options: {
-      task: Promise<{ schema: AbstractTaskSchema; data: Task }[]>;
+      task: Promise<{ parser: AbstractParser; data: ParseResult; path: string }[]>;
       model: [BaseLLMProvider, ModelInfo][];
       output: string;
       tag: string[];
@@ -134,8 +135,9 @@ export const promptCommand = program
             processTask({
               runId,
               systemPrompt,
-              task: task.data,
-              schema: task.schema,
+              data: task.data,
+              parser: task.parser,
+              path: task.path,
               outputDir: options.output,
               provider: providerAndModel[0],
               modelInfo: providerAndModel[1],
@@ -144,7 +146,7 @@ export const promptCommand = program
             }).catch((err) => {
               const error = ensureError(err);
               logger.error(
-                `Error while starting processing task ${task.data.fileName}: ${["production", "prod"].includes(env().nodeEnv) ? error.message : error.stack}`
+                `Error while starting processing task ${task.path}: ${["production", "prod"].includes(env().nodeEnv) ? error.message : error.stack}`
               );
             })
           );

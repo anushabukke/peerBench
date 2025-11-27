@@ -1,4 +1,4 @@
-import { calculateCID } from "@peerbench/sdk";
+import { calculateCID } from "peerbench";
 
 import fs from "fs/promises";
 

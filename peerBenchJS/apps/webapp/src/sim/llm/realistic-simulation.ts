@@ -168,12 +168,62 @@ export async function runRealisticSimulation(
     console.log("\n⚠️  Skipping database write (in-memory only mode)");
   }
 
+  // Check if we're in feedback-only mode (max prompts = 0)
+  const feedbackOnlyMode = config.promptsPerUser.max === 0;
+
+  if (feedbackOnlyMode) {
+    console.log(`\n⚠️  Feedback-only mode detected (max prompts per user = 0)`);
+    console.log(`   Users will only provide feedback on existing prompts, not create new ones`);
+
+    if (!config.submitToExisting || !config.targetPromptSetId) {
+      throw new Error(`Feedback-only mode requires submitToExisting=true and a targetPromptSetId to be specified`);
+    }
+  }
+
   // Generate prompts for each user based on their benchmark idea
-  console.log(`\n📝 Generating prompts for each user...`);
+  console.log(`\n📝 ${feedbackOnlyMode ? 'Skipping prompt generation' : 'Generating prompts for each user'}...`);
   const prompts: RealisticSimulatedPrompt[] = [];
   let totalPromptsGenerated = 0;
 
+  // In feedback-only mode, fetch existing prompts from the target prompt set
+  if (feedbackOnlyMode) {
+    console.log(`\n🔍 Fetching existing prompts from prompt set ${config.targetPromptSetId} for feedback...`);
+    console.log(`   Note: Currently limited to first 10 prompts from the set`);
+    // TODO: Fetch all prompts from the set, not just the first 10
+    const existingSet = await getRandomPromptSetWithPrompts(config.targetPromptSetId);
+
+    if (!existingSet || existingSet.prompts.length === 0) {
+      throw new Error(`Cannot run feedback-only mode: prompt set ${config.targetPromptSetId} has no prompts`);
+    }
+
+    console.log(`✅ Found ${existingSet.prompts.length} existing prompts to review`);
+
+    // Convert existing prompts to the format expected by feedback generation
+    for (const p of existingSet.prompts) {
+      prompts.push({
+        id: p.id,
+        creatorId: 'existing', // Mark as existing prompt (not created by simulation)
+        question: p.question,
+        fullPrompt: p.fullPrompt,
+        answerKey: p.answerKey ?? undefined,
+        metadata: {
+          existingPrompt: true,
+          fromPromptSet: existingSet.id,
+        } as any,
+        type: 'realistic',
+      });
+    }
+
+    console.log(`✅ Loaded ${prompts.length} existing prompts for feedback generation`);
+  }
+
   for (const user of users) {
+    // Skip prompt generation in feedback-only mode
+    if (feedbackOnlyMode) {
+      console.log(`\n  Skipping prompt generation for ${user.displayName} (feedback-only mode)`);
+      continue;
+    }
+
     const numPrompts = randomInt(
       config.promptsPerUser.min,
       config.promptsPerUser.max
@@ -185,6 +235,15 @@ export async function runRealisticSimulation(
       | undefined;
     let promptType: PromptType;
 
+    // Determine prompt type based on config FIRST (before submitToExisting logic)
+    // This ensures consistent behavior whether creating new or submitting to existing
+    const configPromptType = config.promptType || "random";
+    if (configPromptType === "random") {
+      promptType = Math.random() > 0.5 ? "multiple_choice" : "open_ended";
+    } else {
+      promptType = configPromptType;
+    }
+
     // Decide whether to create new prompt_set or submit to existing
     if (
       config.submitToExisting &&
@@ -192,24 +251,43 @@ export async function runRealisticSimulation(
       !config.in_memory_only
     ) {
       console.log(`\n  🔍 Looking for existing prompt set to submit to...`);
-      const existingSet = await getRandomPromptSetWithPrompts();
+      console.log(`  🎯 Configured prompt type: ${promptType}`);
+
+      // Use specific prompt set if targetPromptSetId is provided
+      const existingSet = config.targetPromptSetId
+        ? await getRandomPromptSetWithPrompts(config.targetPromptSetId)
+        : await getRandomPromptSetWithPrompts();
 
       if (existingSet && existingSet.prompts.length > 0) {
         console.log(
           `  ✅ Found existing prompt set: "${existingSet.name}" (${existingSet.id}) with ${existingSet.prompts.length} examples`
         );
         promptSetId = existingSet.id;
-        promptType = existingSet.prompts[0]!.type as PromptType;
 
+        // Filter examples to match the chosen prompt type
+        // Database stores types as "multiple-choice" or "open-ended" (kebab-case)
+        // Our code uses "multiple_choice" or "open_ended" (snake_case)
+        // Normalize both to kebab-case for comparison
+        const normalizedPromptType = promptType.replace(/_/g, "-");
+        const matchingExamples = existingSet.prompts.filter((p) => p.type === normalizedPromptType);
+
+        if (matchingExamples.length === 0) {
+          const availableTypes = [...new Set(existingSet.prompts.map(p => p.type))].join(', ');
+          console.error(`  ❌ Prompt set ${existingSet.id} has no ${normalizedPromptType} examples (available types: ${availableTypes})`);
+          throw new Error(`Prompt set "${existingSet.name}" does not contain any ${promptType.replace('_', ' ')} examples. Available types: ${availableTypes}. Please select a different prompt set or change the prompt type setting.`);
+        }
+
+        console.log(`  🎯 Using ${matchingExamples.length} ${promptType} examples from prompt set (filtered from ${existingSet.prompts.length} total)`);
         console.log(
           `  🤖 Generating ${numPrompts} prompts based on examples...`
         );
         generatedPrompts = await generatePromptsFromExamples(
-          existingSet.prompts.map((p) => ({
+          matchingExamples.map((p) => ({
             question: p.question,
             fullPrompt: p.fullPrompt,
             answerKey: p.answerKey ?? undefined,
             type: p.type as PromptType,
+            options: p.options,
           })),
           numPrompts,
           config.llmModel,
@@ -219,21 +297,14 @@ export async function runRealisticSimulation(
           `  ✅ Generated ${generatedPrompts.length} ${promptType.replace("_", " ")} prompts from examples`
         );
       } else {
-        console.log(`  ⚠️  No existing prompt sets found, creating new one...`);
-        config.submitToExisting = false; // Fall through to create new
+        console.log(`  ⚠️  No existing prompt sets found${config.targetPromptSetId ? ` with ID ${config.targetPromptSetId}` : ""}`);
+        console.error(`  ❌ Cannot continue with submitToExisting=true without a valid prompt set`);
+        throw new Error(`No prompt set found${config.targetPromptSetId ? ` with ID ${config.targetPromptSetId}` : ""}. When submitToExisting is true, at least one existing prompt set must be available.`);
       }
     }
 
     // Create new prompt_set if not submitting to existing
     if (!config.submitToExisting || !promptSetId) {
-      // Choose prompt type based on config (random, multiple_choice, or open_ended)
-      const configPromptType = config.promptType || "random";
-      if (configPromptType === "random") {
-        promptType = Math.random() > 0.5 ? "multiple_choice" : "open_ended";
-      } else {
-        promptType = configPromptType;
-      }
-
       console.log(
         `\n  Generating ${numPrompts} ${promptType.replace("_", " ")} prompts for ${user.displayName}...`
       );
@@ -335,16 +406,27 @@ export async function runRealisticSimulation(
     }
   }
 
-  console.log(
-    `\n✅ Generated ${prompts.length} realistic prompts using LLM (total: ${totalPromptsGenerated})`
-  );
+  if (feedbackOnlyMode) {
+    console.log(
+      `\n✅ Loaded ${prompts.length} existing prompts for feedback (no new prompts generated)`
+    );
+  } else {
+    console.log(
+      `\n✅ Generated ${prompts.length} realistic prompts using LLM (total: ${totalPromptsGenerated})`
+    );
+  }
 
   // For now, use simple feedback generation
   // TODO: Could enhance with LLM-based review generation
+  // TODO: Write feedbacks to database (quick_feedbacks table) when config.write_to_db is true
   console.log("\n💬 Generating feedbacks...");
-  const feedbacks = generateSimpleFeedbacks(users, prompts);
+  const feedbacks = generateSimpleFeedbacks(users, prompts, config);
 
   console.log(`✅ Generated ${feedbacks.length} feedbacks`);
+  if (config.write_to_db && !config.in_memory_only) {
+    console.log(`   ⚠️  Note: Feedbacks are currently only generated in-memory, not written to database`);
+    console.log(`   TODO: Implement database persistence for quick_feedbacks`);
+  }
 
   return {
     users,
@@ -357,38 +439,86 @@ export async function runRealisticSimulation(
 }
 
 /**
- * Generate simple feedbacks based on random behavior
+ * Generate simple feedbacks based on random behavior or configured count
  * This simulates users reviewing each other's prompts
  */
 function generateSimpleFeedbacks(
   users: RealisticSimulatedUser[],
-  prompts: RealisticSimulatedPrompt[]
+  prompts: RealisticSimulatedPrompt[],
+  config: RealisticSimulationConfig
 ): Feedback[] {
   const feedbacks: Feedback[] = [];
-  const reviewProbability = 0.2; // 20% chance to review a prompt
 
-  for (const user of users) {
-    for (const prompt of prompts) {
-      // Don't review own prompts
-      if (prompt.creatorId === user.id) {
+  // Use configured feedbacks per user or fallback to probability-based approach
+  if (config.feedbacksPerUser && (config.feedbacksPerUser.min > 0 || config.feedbacksPerUser.max > 0)) {
+    console.log(`  Using configured feedback counts: ${config.feedbacksPerUser.min}-${config.feedbacksPerUser.max} per user`);
+
+    for (const user of users) {
+      // Get all prompts that aren't this user's
+      // In feedback-only mode, all prompts have creatorId='existing', so all are available for review
+      const availablePrompts = prompts.filter((p) => p.creatorId !== user.id);
+
+      if (availablePrompts.length === 0) {
+        console.log(`  ⚠️  No prompts available for user ${user.displayName} to review`);
         continue;
       }
 
-      // Probabilistic review
-      if (Math.random() > reviewProbability) {
-        continue;
+      // Determine how many feedbacks this user will provide
+      const targetFeedbacks = randomInt(
+        config.feedbacksPerUser.min,
+        config.feedbacksPerUser.max
+      );
+
+      // Can't review more prompts than are available
+      const actualFeedbacks = Math.min(targetFeedbacks, availablePrompts.length);
+
+      console.log(`  User ${user.displayName}: reviewing ${actualFeedbacks} prompts (target: ${targetFeedbacks}, available: ${availablePrompts.length})`);
+
+      // Shuffle available prompts and take the first N
+      const shuffled = [...availablePrompts].sort(() => Math.random() - 0.5);
+      const promptsToReview = shuffled.slice(0, actualFeedbacks);
+
+      for (const prompt of promptsToReview) {
+        // Generate opinion - could be enhanced with LLM
+        // For now, use random with slight positive bias
+        const opinion = Math.random() > 0.4 ? "positive" : "negative";
+
+        feedbacks.push({
+          id: `sim-feedback-${user.id}-${prompt.id}`,
+          userId: user.id,
+          promptId: prompt.id,
+          opinion,
+        });
       }
+    }
+  } else {
+    // Fallback to probability-based approach
+    const reviewProbability = 0.2; // 20% chance to review a prompt
+    console.log(`  Using probability-based feedback generation (${reviewProbability * 100}% chance per prompt)`);
 
-      // Generate opinion - could be enhanced with LLM
-      // For now, use random with slight positive bias
-      const opinion = Math.random() > 0.4 ? "positive" : "negative";
+    for (const user of users) {
+      for (const prompt of prompts) {
+        // Don't review own prompts
+        if (prompt.creatorId === user.id) {
+          continue;
+        }
 
-      feedbacks.push({
-        id: `sim-feedback-${user.id}-${prompt.id}`,
-        userId: user.id,
-        promptId: prompt.id,
-        opinion,
-      });
+        // Probabilistic review
+        if (Math.random() > reviewProbability) {
+          continue;
+        }
+
+        // Generate opinion - could be enhanced with LLM
+        // For now, use random with slight positive bias
+        const opinion = Math.random() > 0.4 ? "positive" : "negative";
+
+        feedbacks.push({
+          id: `sim-feedback-${user.id}-${prompt.id}`,
+          userId: user.id,
+          promptId: prompt.id,
+          opinion,
+        });
+      }
     }
   }
 

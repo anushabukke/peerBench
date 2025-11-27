@@ -1,31 +1,32 @@
 {
   "name": "peerbench",
-  "version": "0.0.1",
-  "description": "Tooling help work with AI benchmarking data and create trustworthy AI",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for peerBench",
   "keywords": [
     "ai",
     "evaluation",
     "validation",
     "benchmark"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
-  "homepage": "https://peerbench.ai",
+  "homepage": "https://github.com/Robust-AI-Bench/peerBench",
   "bugs": {
-    "url": "https://github.com/peerbench/peerBench/issues"
+    "url": "https://github.com/Robust-AI-Bench/peerBench/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/peerbench/peerBench.git"
+    "url": "git+https://github.com/Robust-AI-Bench/peerBench.git"
   },
   "license": "MIT",
-  "author": "peerBench community",
+  "author": "peerBench Development Team",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./generators/pubmed/helpers": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }

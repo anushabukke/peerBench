@@ -1,4 +1,4 @@
-import { AbstractScorer, PromptResponse } from "@peerbench/sdk";
+import { AbstractScorer, PromptResponse } from "peerbench";
 import { findScorer } from "./find-scorer";
 import { dateString } from "@/utils/date-string";
 import { normalizePath } from "@/utils/normalize-path";
@@ -14,6 +14,7 @@ export async function processResponseFile(params: {
   tags?: string[];
   scorer?: AbstractScorer;
   outputDir: string;
+  scorerOptions?: Record<string, any>;
 }) {
   const { file: responseFileName, data: responses } = params.fileData;
   const sampleResponse = responses[0];
@@ -30,7 +31,24 @@ export async function processResponseFile(params: {
     }
   }
 
-  const canScore = await scorer.canScore(sampleResponse);
+  // Check if scorer can score the response
+  // Some scorers (like LLMJudgeScorer) accept options in canScore
+  let canScore: boolean;
+  if (params.scorerOptions && typeof (scorer as any).canScore === "function") {
+    // Try calling with options if the scorer supports it
+    try {
+      canScore = await (scorer as any).canScore(
+        sampleResponse,
+        params.scorerOptions
+      );
+    } catch {
+      // Fallback to calling without options if it fails
+      canScore = await scorer.canScore(sampleResponse);
+    }
+  } else {
+    canScore = await scorer.canScore(sampleResponse);
+  }
+
   if (!canScore) {
     throw new Error(
       `Chosen Scorer "${scorer.identifier}" is not eligible to Score Response file "${responseFileName}"`
@@ -50,7 +68,7 @@ export async function processResponseFile(params: {
 
   logger.info(`Scoring Responses of "${responseFileName}"`);
 
-  await processResponses(responses, scorer, stream);
+  await processResponses(responses, scorer, stream, params.scorerOptions);
   await stream.end();
 
   // Hash and sign the output file

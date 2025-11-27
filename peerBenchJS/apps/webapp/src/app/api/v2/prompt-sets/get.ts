@@ -10,7 +10,7 @@ import {
 import { PaginatedResponse } from "@/types/db";
 import { PromptSetAccessReasons } from "@/types/prompt-set";
 import { Override } from "@/utils/type-helper";
-import { EnumSchema } from "@peerbench/sdk";
+import { EnumSchema } from "peerbench";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 

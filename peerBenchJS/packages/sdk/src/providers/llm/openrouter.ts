@@ -233,6 +233,10 @@ export class OpenRouterProvider extends BaseLLMProvider {
         owner = LargeLanguageModelOwner.Google;
         name = LargeLanguageModel[owner].Gemini_2_0_Flash;
         break;
+      case "gemini-2.0-flash-lite-001":
+        owner = LargeLanguageModelOwner.Google;
+        name = LargeLanguageModel[owner].Gemini_2_0_Flash_Lite;
+        break;
       case "gemini-2.5-flash-lite":
         owner = LargeLanguageModelOwner.Google;
         name = LargeLanguageModel[owner].Gemini_2_5_Flash_Lite;

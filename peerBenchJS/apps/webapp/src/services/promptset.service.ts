@@ -30,8 +30,8 @@ import {
   knownModelsTable,
 } from "@/database/schema";
 import { DbOptions, DbTx, PaginationOptions } from "@/types/db";
-import { withTxOrDb, withTxOrTx } from "@/database/helpers";
-import { PromptType } from "@peerbench/sdk";
+import { excluded, withTxOrDb, withTxOrTx } from "@/database/helpers";
+import { PromptType } from "peerbench";
 import { paginateQuery } from "@/database/query";
 import {
   PromptSetLicense,
@@ -48,6 +48,9 @@ import {
   PromptSetAccessReasons,
 } from "@/types/prompt-set";
 import { ADMIN_USER_ID, NULL_UUID } from "@/lib/constants";
+import { promptFiltersSchema } from "@/validation/api/prompt-filters";
+import { z } from "zod";
+import { PromptService } from "./prompt.service";
 
 export class PromptSetService {
   /**
@@ -63,6 +66,7 @@ export class PromptSetService {
       citationInfo?: string;
       isPublic?: boolean;
       isPublicSubmissionsAllowed?: boolean;
+      promptsToInclude?: z.infer<typeof promptFiltersSchema>;
     },
     options?: DbOptions
   ) {
@@ -79,6 +83,9 @@ export class PromptSetService {
           citationInfo: data.citationInfo,
           isPublic: data.isPublic,
           isPublicSubmissionsAllowed: data.isPublicSubmissionsAllowed,
+          metadata: {
+            type: data.promptsToInclude ? `curated` : `default`,
+          },
         })
         .returning({
           id: promptSetsTable.id,
@@ -103,6 +110,19 @@ export class PromptSetService {
           role: UserRoleOnPromptSet.owner,
         })
         .returning();
+
+      // Insert the Prompts that matches with the given filters (if there are)
+      if (data.promptsToInclude) {
+        await this.includePrompts({
+          tx,
+          requestedByUserId: data.ownerId,
+          promptSetId: promptSet.id,
+          filters: data.promptsToInclude,
+
+          // Prompt Set is fresh so no need to check permissions
+          checkPromptSetPermissions: false,
+        });
+      }
 
       return promptSet;
     }, options?.tx);
@@ -1422,6 +1442,111 @@ export class PromptSetService {
         }
       );
     }, options?.tx);
+  }
+
+  /**
+   * Includes the Prompts that matches with the given filters to the given Prompt Set.
+   * This function uses `PromptService.getPrompts()`.
+   */
+  static async includePrompts(
+    options: DbOptions & {
+      requestedByUserId: string;
+      promptSetId: number;
+      filters: z.infer<typeof promptFiltersSchema>;
+
+      /**
+       * If enabled then checks whether the user has permissions
+       * to add new Prompts to the Prompt Set.
+       */
+      checkPromptSetPermissions?: boolean;
+    }
+  ) {
+    const { checkPromptSetPermissions = true } = options;
+
+    return await withTxOrTx(async (tx) => {
+      // Apply access control rules
+      if (
+        checkPromptSetPermissions &&
+        options.requestedByUserId !== undefined &&
+        options.requestedByUserId !== ADMIN_USER_ID // ACL rules doesn't apply to admin user
+      ) {
+        const [promptSet] = await tx
+          .select({
+            isPublic: promptSetsTable.isPublic,
+            isPublicSubmissionsAllowed:
+              promptSetsTable.isPublicSubmissionsAllowed,
+          })
+          .from(promptSetsTable)
+          .where(eq(promptSetsTable.id, options.promptSetId));
+
+        if (!promptSet) {
+          throw ApiError.notFound("Prompt Set not found");
+        }
+
+        const { role } = await tx
+          .select({ role: userRoleOnPromptSetTable.role })
+          .from(userRoleOnPromptSetTable)
+          .where(
+            and(
+              eq(userRoleOnPromptSetTable.userId, options.requestedByUserId),
+              eq(userRoleOnPromptSetTable.promptSetId, options.promptSetId)
+            )
+          )
+          .then((result) => result[0] || { role: null });
+
+        // Check if user is allowed to include a new Prompt to the Prompt Set
+        if (
+          !promptSet.isPublic &&
+          // Prompt Set is public but doesn't allow public submissions
+          !promptSet.isPublicSubmissionsAllowed &&
+          role !== UserRoleOnPromptSet.admin &&
+          role !== UserRoleOnPromptSet.owner &&
+          role !== UserRoleOnPromptSet.collaborator
+        ) {
+          throw ApiError.forbidden();
+        }
+      }
+
+      // If the given filters match with a large number of Prompts, we need
+      // to process small amount of them in each cycle to keep the memory usage low.
+      const maxPromptsPerCycle = 2_000;
+      let page = 1;
+      let totalIncluded = 0;
+      while (true) {
+        const prompts = await PromptService.getPrompts({
+          tx,
+          filters: options.filters,
+          page,
+          pageSize: maxPromptsPerCycle,
+          requestedByUserId: options.requestedByUserId,
+        });
+
+        await tx
+          .insert(promptSetPrompts)
+          .values(
+            prompts.data.map((p) => ({
+              promptSetId: options.promptSetId,
+              promptId: p.id,
+              status: PromptStatuses.included,
+            }))
+          )
+          .onConflictDoUpdate({
+            target: [promptSetPrompts.promptSetId, promptSetPrompts.promptId],
+            set: {
+              status: excluded(promptSetPrompts.status),
+            },
+          });
+
+        // Break the loop if we have processed all of them
+        totalIncluded += prompts.data.length;
+        if (totalIncluded >= prompts.totalCount) {
+          break;
+        }
+
+        // Go to the next page
+        page++;
+      }
+    }, options.tx);
   }
 
   static async updatePromptAssignmentStatus(

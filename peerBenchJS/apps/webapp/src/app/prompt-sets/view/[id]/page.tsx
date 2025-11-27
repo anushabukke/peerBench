@@ -15,6 +15,7 @@ import {
   LucideBuilding2,
   LucideClipboardCheck,
   LucidePlus,
+  LucidePlay,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -78,7 +79,7 @@ export default async function Page({
                 )}
                 <div className="flex-1" />
                 <div className="flex gap-2">
-                  {(promptSet.totalPromptsCount ?? 0) > 0 && (
+                  {(promptSet.totalPromptsCount ?? 0) > 0 && Boolean(user) && (
                     <Button
                       asChild
                       className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 h-auto"
@@ -92,8 +93,7 @@ export default async function Page({
                       </Link>
                     </Button>
                   )}
-                  {(promptSet.permissions?.canEdit ||
-                    promptSet.isPublicSubmissionsAllowed) && (
+                  {promptSet.permissions?.canEdit && (
                     <Button
                       asChild
                       variant="outline"
@@ -112,6 +112,18 @@ export default async function Page({
                       <Link href={`/prompt-sets/view/${promptSet.id}/edit`}>
                         <LucidePen size={16} />
                         Edit
+                      </Link>
+                    </Button>
+                  )}
+                  {Boolean(user) && (
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="border-yellow-300 text-yellow-700 hover:bg-yellow-50"
+                    >
+                      <Link href={`/benchmark?promptSetId=${promptSet.id}`}>
+                        <LucidePlay size={16} />
+                        Run Benchmark
                       </Link>
                     </Button>
                   )}
@@ -337,7 +349,6 @@ export default async function Page({
         </div>
 
         <PromptsInfiniteList
-          isUserLoggedIn={Boolean(user)}
           fixedFilters={{ promptSetId: promptSet.id }}
           canManagePromptStatus={promptSet.permissions?.canEdit}
         />

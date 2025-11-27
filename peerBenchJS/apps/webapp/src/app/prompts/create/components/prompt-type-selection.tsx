@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/utils/cn";
-import { PromptType, PromptTypes } from "@peerbench/sdk";
+import { PromptType, PromptTypes } from "peerbench";
 import { usePageContext } from "../context";
 import { capitalize } from "@/utils/capitalize";
 import { useEffect } from "react";

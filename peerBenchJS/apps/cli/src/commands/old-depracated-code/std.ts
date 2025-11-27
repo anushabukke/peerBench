@@ -1,5 +1,5 @@
 import { logger } from "@/core/logger";
-import { readTaskFromFile, SchemaName } from "@peerbench/sdk";
+import { readTaskFromFile, SchemaName } from "peerbench";
 import { dirname, join, parse } from "path";
 import { writeFileSync } from "fs";
 import { program } from "@/core/program";

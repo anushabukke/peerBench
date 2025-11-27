@@ -4,7 +4,7 @@ import {
   knownModelsTable,
   providerModelsTable,
 } from "@/database/schema";
-import { OpenRouterProvider } from "@peerbench/sdk";
+import { OpenRouterProvider } from "peerbench";
 import { ColumnBaseConfig, ColumnDataType, sql } from "drizzle-orm";
 import { PgColumn } from "drizzle-orm/pg-core";
 import { NextResponse, type NextRequest } from "next/server";

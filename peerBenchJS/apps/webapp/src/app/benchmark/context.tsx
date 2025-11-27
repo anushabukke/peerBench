@@ -12,7 +12,7 @@ import {
   PromptTypes,
   ScoringMethods,
   PromptResponse,
-} from "@peerbench/sdk";
+} from "peerbench";
 import React, {
   createContext,
   useContext,
@@ -197,7 +197,7 @@ export function PageContextProvider({ children }: { children: ReactNode }) {
       hasOpenEndedPrompts = promptsToBeTested.some(
         (prompt) => prompt.type === PromptTypes.OpenEnded
       );
-    } else if (selectedPromptSet && !selectedPromptSet.__isNew__) {
+    } else if (selectedPromptSet) {
       hasOpenEndedPrompts =
         selectedPromptSet.includingPromptTypes?.includes(
           PromptTypes.OpenEnded

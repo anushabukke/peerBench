@@ -1,4 +1,4 @@
-import { PromptScore } from "@peerbench/sdk";
+import { PromptScore } from "peerbench";
 import { Loader2 } from "lucide-react";
 import {
   Accordion,

@@ -22,7 +22,7 @@ import {
   LLMJudgeScorer,
   PromptScore,
   buildResponse,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { Textarea } from "@/components/ui/textarea";
 import {
   LoaderCircleIcon,
@@ -30,6 +30,7 @@ import {
   TestTube,
   Eye,
   PlusCircle,
+  LucideThumbsUp,
 } from "lucide-react";
 import { v7 as uuidv7 } from "uuid";
 import { JSONView } from "@/components/json-view";
@@ -44,17 +45,31 @@ import {
 import ModelSelect, { ModelSelectValue } from "@/components/model-select";
 import { isAnyProviderLoading } from "@/lib/helpers/is-any-provider-loading";
 import { stableStringify } from "@/lib/stable-stringify";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { QK_PROMPT_SETS, QK_PROMPTS } from "@/lib/react-query/query-keys";
 import { uploadAction } from "@/lib/actions/upload";
 import { formatUsd } from "@/utils/format-usd";
 import Decimal from "decimal.js";
+import { MessageModal } from "@/components/modals/message-modal";
+
+const UPLOAD_COUNT_KEY = "peerbench_prompt_upload_count";
 
 export default function TestPrompt() {
   const queryClient = useQueryClient();
   const ctx = usePageContext();
+  const [showReviewReminder, setShowReviewReminder] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Get userId from context
+    ctx.userId.then((userId) => {
+      if (!userId) return;
+      setUserId(userId);
+    });
+  }, [ctx.userId]);
+
   const uploadBlockerMessage = useMemo(() => {
     if (ctx.lastUploadedPromptId !== null) {
       return "Upload is already done";
@@ -68,7 +83,7 @@ export default function TestPrompt() {
       return "In progress. Please wait.";
     }
 
-    if (!ctx.prompt.question.data) {
+    if (!ctx.prompt.prompt) {
       return "Question cannot be empty";
     }
 
@@ -100,7 +115,7 @@ export default function TestPrompt() {
     ctx.prompt.options,
     ctx.prompt.answerKey,
     ctx.prompt.answer,
-    ctx.prompt.question.data,
+    ctx.prompt.prompt,
     ctx.isInProgress,
     ctx.isUploading,
     ctx.lastUploadedPromptId,
@@ -118,7 +133,7 @@ export default function TestPrompt() {
       return "Please select at least one test model";
     }
 
-    if (!ctx.prompt.question.data) {
+    if (!ctx.prompt.prompt) {
       return "Question cannot be empty";
     }
 
@@ -143,7 +158,7 @@ export default function TestPrompt() {
       return "Please select an answer key for multiple choice Prompts";
     }
   }, [
-    ctx.prompt.question.data,
+    ctx.prompt.prompt,
     ctx.selectedTestModels,
     ctx.isInProgress,
     ctx.selectedPromptType,
@@ -279,7 +294,7 @@ export default function TestPrompt() {
 
       if (ctx.lastUploadedPromptId === null) {
         // Store the uploaded Prompt ID for the buttons
-        ctx.setLastUploadedPromptId(prompt.did);
+        ctx.setLastUploadedPromptId(prompt.promptUUID);
       }
 
       // Invalidate query caches
@@ -304,6 +319,19 @@ export default function TestPrompt() {
         isLoading: false,
         autoClose: 3000,
       });
+
+      // Track upload count and show reminder every 3rd upload
+      const currentCount = parseInt(
+        localStorage.getItem(UPLOAD_COUNT_KEY) || "0",
+        10
+      );
+      const newCount = currentCount + 1;
+      localStorage.setItem(UPLOAD_COUNT_KEY, newCount.toString());
+
+      // Show reminder every 3rd upload
+      if (newCount % 3 === 0) {
+        setShowReviewReminder(true);
+      }
     } catch (error) {
       console.error("Error uploading:", error);
       toast.update(loadingToast, {
@@ -319,21 +347,17 @@ export default function TestPrompt() {
 
   const buildPromptObject = async () => {
     const prompt = {
-      did: ctx.prompt.did || uuidv7(),
-      question: {
-        data: ctx.prompt.question.data,
-        sha256: await calculateSHA256(ctx.prompt.question.data),
-        cid: await calculateCID(ctx.prompt.question.data).then((c) =>
-          c.toString()
-        ),
-      },
-      fullPrompt: {
-        data: ctx.prompt.fullPrompt.data,
-        sha256: await calculateSHA256(ctx.prompt.fullPrompt.data),
-        cid: await calculateCID(ctx.prompt.fullPrompt.data).then((c) =>
-          c.toString()
-        ),
-      },
+      promptUUID: ctx.prompt.promptUUID || uuidv7(),
+      prompt: ctx.prompt.prompt,
+      promptSHA256: await calculateSHA256(ctx.prompt.prompt),
+      promptCID: await calculateCID(ctx.prompt.prompt).then((c) =>
+        c.toString()
+      ),
+      fullPrompt: ctx.prompt.fullPrompt,
+      fullPromptSHA256: await calculateSHA256(ctx.prompt.fullPrompt),
+      fullPromptCID: await calculateCID(ctx.prompt.fullPrompt).then((c) =>
+        c.toString()
+      ),
 
       // Don't include options at all if there are no options
       options:
@@ -387,7 +411,7 @@ export default function TestPrompt() {
             }
 
             const forwardResponse = await provider.implementation.forward(
-              ctx.prompt.fullPrompt.data,
+              ctx.prompt.fullPrompt,
               {
                 model: testModel.modelId,
                 system: systemPrompt,
@@ -843,6 +867,41 @@ export default function TestPrompt() {
           )}
         </div>
       </div>
+
+      {/* Review Reminder Modal */}
+      {showReviewReminder && userId && (
+        <MessageModal
+          message={
+            <div className="space-y-3">
+              <p>
+                Great work! You&apos;ve uploaded{" "}
+                {localStorage.getItem(UPLOAD_COUNT_KEY)} prompts.
+              </p>
+              <p>
+                To get your prompts verified and included in benchmarks, ask
+                friends to review them! Share your personal review link:
+              </p>
+              <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                <Link
+                  href={`/prompts/review?uploaderId=${userId}`}
+                  className="text-blue-600 hover:text-blue-800 underline font-medium"
+                  onClick={() => setShowReviewReminder(false)}
+                >
+                  {typeof window !== "undefined" && window.location.origin}
+                  /prompts/review?uploaderId={userId}
+                </Link>
+              </div>
+              <p className="text-sm text-gray-600">
+                The more reviews your prompts get, the more likely they&apos;ll
+                be verified and used in benchmarks!
+              </p>
+            </div>
+          }
+          title="Get Your Prompts Reviewed!"
+          icon={<LucideThumbsUp className="w-5 h-5 text-blue-500" />}
+          onClose={() => setShowReviewReminder(false)}
+        />
+      )}
     </TooltipProvider>
   );
 }

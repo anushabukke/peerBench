@@ -4,7 +4,7 @@ import { OptionTags } from "../options/tags";
 import { FileSchema } from "@/validation/file-schema";
 import { JSONSchema } from "@/validation/json-schema";
 import { z } from "zod";
-import { AbstractScorer, PromptResponseSchema } from "@peerbench/sdk";
+import { AbstractScorer, PromptResponseSchema } from "peerbench";
 import { getScorer } from "@/scorers";
 import { loadAccount } from "@/utils/load-account";
 import { processResponseFile, ResponseFileData } from "./process-response-file";
@@ -12,6 +12,7 @@ import { ensureError } from "@/utils/ensure-error";
 import { logger } from "@/core/logger";
 import { env } from "@/environment";
 import { basename } from "path";
+import { loadScorerDefaults, mergeScorerOptions } from "./load-scorer-options";
 
 program
   .command("score")
@@ -46,6 +47,21 @@ program
 
     return scorer;
   })
+  .option(
+    "--options <path or JSON string>",
+    "Path to the scorer options file or a JSON string that will be passed to the Scorer",
+    (value) =>
+      z
+        .union([
+          JSONSchema<any>(),
+          FileSchema().pipe(
+            JSONSchema({
+              message: "Given options file is not a valid JSON file",
+            })
+          ),
+        ])
+        .parse(value)
+  )
   .addOption(OptionOutputDir("scores").makeOptionMandatory(true))
   .addOption(OptionTags())
   .action(
@@ -54,11 +70,19 @@ program
       tags: string[];
       response: ResponseFileData[];
       scorer?: AbstractScorer;
+      options?: any;
     }) => {
       const responses = options.response;
 
       // Ensure the account is set
       loadAccount();
+
+      // Load defaults and merge with provided options
+      const scorerIdentifier = options.scorer?.identifier;
+      const scorerOptions = await mergeScorerOptions(
+        scorerIdentifier,
+        options.options
+      );
 
       const promises = responses.map((response) =>
         processResponseFile({
@@ -66,6 +90,7 @@ program
           scorer: options.scorer,
           outputDir: options.output,
           tags: options.tags,
+          scorerOptions,
         }).catch((err) => {
           const error = ensureError(err);
           logger.error(

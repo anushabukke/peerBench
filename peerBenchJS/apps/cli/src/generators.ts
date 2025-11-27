@@ -1,4 +1,4 @@
-import { AbstractGenerator, TRPGenerator } from "@peerbench/sdk";
+import { AbstractGenerator, TRPGenerator } from "peerbench";
 
 export const generators: AbstractGenerator[] = [
   new TRPGenerator(),

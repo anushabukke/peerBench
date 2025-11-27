@@ -1,4 +1,4 @@
-import { PromptResponse } from "@peerbench/sdk";
+import { PromptResponse } from "peerbench";
 import { Loader2 } from "lucide-react";
 import {
   Accordion,

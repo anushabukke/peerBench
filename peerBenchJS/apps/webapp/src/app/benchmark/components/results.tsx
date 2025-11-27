@@ -5,7 +5,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatMs } from "@peerbench/sdk";
+import { formatMs } from "peerbench";
 import { formatUsd } from "@/utils/format-usd";
 import { LucideLoader2, LucideXCircle, LucideCheckCircle } from "lucide-react";
 import Decimal from "decimal.js";

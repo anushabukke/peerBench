@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/tooltip";
 import { PromptStatuses } from "@/database/types";
 import IncludedByPromptSetLink from "@/components/included-by-prompt-set-link";
-import { PromptTypes } from "@peerbench/sdk";
+import { PromptTypes } from "peerbench";
 import { MetadataAccordion } from "@/components/metadata-accordion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { capitalize } from "@/utils/capitalize";
@@ -271,7 +271,11 @@ export default function PromptInfo({ prompt, tags, userId }: PromptInfoProps) {
         )}
 
         {/* Comments Section */}
-        <PromptComments promptId={prompt.id} variant="accordion" defaultOpen={false} />
+        <PromptComments
+          promptId={prompt.id}
+          variant="accordion"
+          defaultOpen={false}
+        />
       </CardContent>
     </Card>
   );

@@ -67,9 +67,11 @@ export async function createSimulatedPromptSet(
 }
 
 /**
- * Get a random existing prompt set with prompts
+ * Get a random existing prompt set with prompts, or a specific one if targetId is provided
  */
-export async function getRandomPromptSetWithPrompts(): Promise<{
+export async function getRandomPromptSetWithPrompts(
+  targetId?: number
+): Promise<{
   id: number;
   name: string;
   prompts: Array<{
@@ -78,8 +80,67 @@ export async function getRandomPromptSetWithPrompts(): Promise<{
     fullPrompt: string;
     answerKey: string | null;
     type: string;
+    options: any;
   }>;
 } | null> {
+  // If a specific prompt set ID is provided, fetch that one
+  if (targetId !== undefined) {
+    console.log(
+      `[promptset-creation] Fetching specific prompt set ${targetId}...`
+    );
+
+    const promptSet = await db
+      .select({
+        id: promptSetsTable.id,
+        title: promptSetsTable.title,
+      })
+      .from(promptSetsTable)
+      .where(eq(promptSetsTable.id, targetId))
+      .limit(1);
+
+    if (promptSet.length === 0) {
+      console.log(
+        `[promptset-creation] ❌ Prompt set ${targetId} not found`
+      );
+      return null;
+    }
+
+    // Get first 10 prompts from this set
+    const prompts = await db
+      .select({
+        id: promptsTable.id,
+        question: promptsTable.question,
+        fullPrompt: promptsTable.fullPrompt,
+        answerKey: promptsTable.answerKey,
+        type: promptsTable.type,
+        options: promptsTable.options,
+      })
+      .from(promptsTable)
+      .innerJoin(
+        promptSetPrompts,
+        eq(promptSetPrompts.promptId, promptsTable.id)
+      )
+      .where(eq(promptSetPrompts.promptSetId, targetId))
+      .limit(10);
+
+    if (prompts.length === 0) {
+      console.log(
+        `[promptset-creation] ❌ Prompt set ${targetId} has no prompts`
+      );
+      return null;
+    }
+
+    console.log(
+      `[promptset-creation] ✅ Found prompt set ${targetId} with ${prompts.length} prompts`
+    );
+    return {
+      id: promptSet[0]!.id,
+      name: promptSet[0]!.title,
+      prompts,
+    };
+  }
+
+  // Otherwise, get a random prompt set
   console.log(`[promptset-creation] Fetching random prompt set...`);
 
   // Get all prompt sets with at least some prompts
@@ -112,6 +173,7 @@ export async function getRandomPromptSetWithPrompts(): Promise<{
         fullPrompt: promptsTable.fullPrompt,
         answerKey: promptsTable.answerKey,
         type: promptsTable.type,
+        options: promptsTable.options,
       })
       .from(promptsTable)
       .innerJoin(

@@ -10,7 +10,7 @@ import {
   calculateSHA256,
   PromptResponse,
   PromptTypes,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { errorMessage } from "@/utils/error-message";
 import { useModelAPI } from "@/lib/hooks/use-model-api";
 
@@ -42,18 +42,16 @@ export default function PromptInput() {
 
       // Build prompt object
       const prompt = {
-        did: uuidv7(),
-        question: {
-          data: ctx.userPrompt,
-          sha256: await calculateSHA256(ctx.userPrompt),
-          cid: await calculateCID(ctx.userPrompt).then((c) => c.toString()),
-        },
+        promptUUID: uuidv7(),
+        prompt: ctx.userPrompt,
+        promptSHA256: await calculateSHA256(ctx.userPrompt),
+        promptCID: await calculateCID(ctx.userPrompt).then((c) => c.toString()),
         // TODO: add a system prompt to the full prompt to make the models more accurate
-        fullPrompt: {
-          data: ctx.userPrompt,
-          sha256: await calculateSHA256(ctx.userPrompt),
-          cid: await calculateCID(ctx.userPrompt).then((c) => c.toString()),
-        },
+        fullPrompt: ctx.userPrompt,
+        fullPromptSHA256: await calculateSHA256(ctx.userPrompt),
+        fullPromptCID: await calculateCID(ctx.userPrompt).then((c) =>
+          c.toString()
+        ),
         type: PromptTypes.OpenEnded,
         metadata: {
           "generated-via": "peerbench-webapp",
@@ -158,12 +156,9 @@ async function generateResponse(
     throw new Error(`Provider ${model.provider} not initialized`);
   }
 
-  const rawResponse = await provider.implementation.forward(
-    prompt.fullPrompt.data,
-    {
-      model: model.modelId,
-    }
-  );
+  const rawResponse = await provider.implementation.forward(prompt.fullPrompt, {
+    model: model.modelId,
+  });
 
   const response: PromptResponse = {
     did: uuidv7(),

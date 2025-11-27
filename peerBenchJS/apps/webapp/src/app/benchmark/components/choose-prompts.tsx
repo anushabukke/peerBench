@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import PromptSetSelect, {
   PromptSetSelectOption,
 } from "@/components/prompt-set-select";
-import { PBParser, Prompt, PromptSchema, DataParser } from "@peerbench/sdk";
+import { PBParser, Prompt, PromptSchema, DataParser } from "peerbench";
 import { toast } from "react-toastify";
 import { FileInput } from "@/components/ui/file-input";
 import { errorMessage } from "@/utils/error-message";
@@ -62,7 +62,7 @@ export default function ChoosePrompts() {
   const handleExistingPromptSetSelect = async (
     promptSet: PromptSetSelectOption | null
   ) => {
-    if (!promptSet || promptSet?.__isNew__) {
+    if (!promptSet) {
       return;
     }
 
@@ -86,7 +86,6 @@ export default function ChoosePrompts() {
           promptSetId: [promptSet.id!],
           page: currentPage,
           pageSize: pageSize,
-          accessReason: PromptSetAccessReasons.runBenchmark,
         });
 
         if (!result.data || !Array.isArray(result.data)) {
@@ -134,7 +133,7 @@ export default function ChoosePrompts() {
       } while (currentPage <= totalPages);
 
       if (allPrompts.length === 0) {
-        throw new Error("No prompts found in this benchmark");
+        throw new Error("No Prompts found in this Benchmark");
       }
 
       ctx.setPromptsToBeTested(allPrompts);
@@ -142,10 +141,11 @@ export default function ChoosePrompts() {
       ctx.setTotalPromptsCount(allPrompts.length);
       ctx.setSelectedPromptSet(promptSet);
     } catch (err) {
-      toast.error(errorMessage(err));
       console.error(err);
+      toast.error(`Couldn't select the Benchmark: ${errorMessage(err)}`);
 
       ctx.setSelectedPromptSet(null);
+      ctx.existingPromptSetSelectHandler.current?.clear();
     } finally {
       ctx.setIsLoadingPrompts(false);
     }
@@ -325,13 +325,13 @@ export default function ChoosePrompts() {
               {ctx.promptsSource === "file" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Associate with benchmark
+                    Associate with Benchmark
                   </label>
                   <PromptSetSelect
                     accessReason={PromptSetAccessReasons.submitPrompt}
                     ref={ctx.savePromptSetSelectHandler}
                     id="prompt-set-save-select"
-                    placeholder="Select or create a benchmark..."
+                    placeholder="Select a Benchmark..."
                     disabled={
                       ctx.isUploading ||
                       ctx.isResultsUploaded ||
@@ -413,7 +413,7 @@ export default function ChoosePrompts() {
                 id="prompt-set-select"
                 placeholder="Select a benchmark..."
                 accessReason={PromptSetAccessReasons.runBenchmark}
-                urlParamName="promptSet"
+                urlParamName="promptSetId"
               />
             </div>
           </div>

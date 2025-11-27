@@ -3,7 +3,7 @@
 import React from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { usePageContext } from "../context";
-import { preparePrompt, PromptTypes } from "@peerbench/sdk";
+import { preparePrompt, PromptTypes } from "peerbench";
 import { Button } from "@/components/ui/button";
 import Alert from "@/components/ui/alert";
 import OptionInput from "./option-input";
@@ -39,21 +39,13 @@ export default function PromptInformation() {
 
       return {
         ...prev,
-        question: {
-          data: e.target.value,
-
-          // These will be calculated later
-          cid: "",
-          sha256: "",
-        },
-
-        fullPrompt: {
-          data: fullPromptData,
-
-          // These will be calculated later
-          cid: "",
-          sha256: "",
-        },
+        prompt: e.target.value,
+        fullPrompt: fullPromptData,
+        // These will be calculated later
+        promptCID: "",
+        promptSHA256: "",
+        fullPromptCID: "",
+        fullPromptSHA256: "",
       };
     });
   };
@@ -79,13 +71,10 @@ export default function PromptInformation() {
 
       return {
         ...prev,
-        fullPrompt: {
-          data: preparePrompt(prev.question.data, options),
-
-          // These will be calculated later
-          cid: "",
-          sha256: "",
-        },
+        fullPrompt: preparePrompt(prev.prompt, options),
+        // These will be calculated later
+        fullPromptCID: "",
+        fullPromptSHA256: "",
         options,
       };
     });
@@ -112,11 +101,9 @@ export default function PromptInformation() {
         ...prev,
         options: newOptions,
         answerKey: prev.answerKey === optionKey ? "" : prev.answerKey,
-        fullPrompt: {
-          data: preparePrompt(prev.question.data, newOptions),
-          cid: "",
-          sha256: "",
-        },
+        fullPrompt: preparePrompt(prev.prompt, newOptions),
+        fullPromptCID: "",
+        fullPromptSHA256: "",
       };
     });
   };
@@ -128,7 +115,7 @@ export default function PromptInformation() {
         [optionKey]: value,
       };
 
-      let fullPromptData = preparePrompt(prev.question.data, options);
+      let fullPromptData = preparePrompt(prev.prompt, options);
 
       // If this is an "Open Ended with Docs" prompt and documents are selected, append them
       if (
@@ -147,13 +134,10 @@ export default function PromptInformation() {
       return {
         ...prev,
         answer: optionKey === prev.answerKey ? options[optionKey] : prev.answer,
-        fullPrompt: {
-          data: fullPromptData,
-
-          // These will be calculated later
-          cid: "",
-          sha256: "",
-        },
+        fullPrompt: fullPromptData,
+        // These will be calculated later
+        fullPromptCID: "",
+        fullPromptSHA256: "",
         options,
       };
     });
@@ -172,7 +156,7 @@ export default function PromptInformation() {
 
     // Update the full prompt with the new documents
     ctx.setPrompt((prev) => {
-      let fullPromptData = preparePrompt(prev.question.data, prev.options);
+      let fullPromptData = preparePrompt(prev.prompt, prev.options);
 
       // If this is an "Open Ended with Docs" prompt and documents are selected, append them
       if (
@@ -190,11 +174,9 @@ export default function PromptInformation() {
 
       return {
         ...prev,
-        fullPrompt: {
-          data: fullPromptData,
-          cid: "",
-          sha256: "",
-        },
+        fullPrompt: fullPromptData,
+        fullPromptCID: "",
+        fullPromptSHA256: "",
         // Update metadata to include document information
         metadata: {
           ...prev.metadata,
@@ -240,7 +222,7 @@ export default function PromptInformation() {
             Question
           </label>
           <Textarea
-            value={ctx.prompt.question.data}
+            value={ctx.prompt.prompt}
             onChange={handleQuestionChange}
             disabled={ctx.isInProgress}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
@@ -335,9 +317,9 @@ export default function PromptInformation() {
                   <span className="font-medium text-gray-700">Full Prompt</span>
                   <span className="text-xs text-gray-500 font-normal">
                     The complete Prompt that will be sent to the model
-                    {ctx.prompt.fullPrompt.data.length > 0 && (
+                    {ctx.prompt.fullPrompt.length > 0 && (
                       <span className="ml-2">
-                        ({ctx.prompt.fullPrompt.data.length} characters)
+                        ({ctx.prompt.fullPrompt.length} characters)
                       </span>
                     )}
                   </span>
@@ -346,7 +328,7 @@ export default function PromptInformation() {
               <AccordionContent className="pb-0">
                 <div className="p-2 border-t bg-gray-50 border-gray-200">
                   <Textarea
-                    value={ctx.prompt.fullPrompt.data}
+                    value={ctx.prompt.fullPrompt}
                     readOnly
                     className="min-h-[300px] max-h-[500px] resize-none font-mono text-sm border-0 focus:ring-0 bg-white"
                     placeholder="Full prompt will appear here..."

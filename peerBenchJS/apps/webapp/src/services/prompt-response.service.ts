@@ -32,7 +32,7 @@ import {
   calculateSHA256,
   PromptResponse,
   removeDIDPrefix,
-} from "@peerbench/sdk";
+} from "peerbench";
 import {
   and,
   countDistinct,
@@ -67,7 +67,9 @@ export class PromptResponseService {
       // when applying ACL rules.
       const promptIds = [
         ...new Set(
-          data.responses.map((response) => removeDIDPrefix(response.prompt.did))
+          data.responses.map((response) =>
+            removeDIDPrefix(response.prompt.promptUUID)
+          )
         ),
       ];
 
@@ -215,8 +217,9 @@ export class PromptResponseService {
 
           hashCIDRegistration: cid,
           hashSha256Registration: sha256,
+          uploaderId: data.uploaderId,
 
-          promptId: removeDIDPrefix(response.prompt.did),
+          promptId: removeDIDPrefix(response.prompt.promptUUID),
           inputTokensUsed: response.inputTokensUsed,
           outputTokensUsed: response.outputTokensUsed,
           inputCost: response.inputCost,

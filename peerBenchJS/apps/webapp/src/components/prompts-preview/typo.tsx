@@ -1,4 +1,4 @@
-import { Prompt } from "@peerbench/sdk";
+import { Prompt } from "peerbench";
 
 interface TypoProps {
   prompt: Prompt;
@@ -9,7 +9,7 @@ export default function Typo({ prompt, showCorrectAnswer }: TypoProps) {
   return (
     <>
       <p className="font-medium text-gray-800 dark:text-gray-200">
-        {prompt.question.data}
+        {prompt.prompt}
       </p>
       <div className="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded">
         <p className="text-sm text-red-800 dark:text-red-200 font-medium">

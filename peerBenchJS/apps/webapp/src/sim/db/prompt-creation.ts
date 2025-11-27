@@ -8,23 +8,32 @@
 
 import "server-only";
 import { db } from "@/database/client";
-import { promptsTable, promptSetPrompts } from "@/database/schema";
+import { promptsTable, promptSetPrompts, hashRegistrationsTable } from "@/database/schema";
 import { PromptStatuses } from "@/database/types";
 import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
-import { PromptTypes } from "@peerbench/sdk";
+import {
+  calculateCID,
+  calculateSHA256 as pbCalculateSHA256,
+  PromptTypes,
+  stableStringify,
+} from "peerbench";
 
 /**
  * Calculate SHA256 hash of a string
  */
-function calculateSHA256(data: string): string {
+function calculateSHA256(data: string | undefined): string {
+  if (!data) {
+    console.error('[prompt-creation] Attempting to hash undefined/null data');
+    return createHash("sha256").update("").digest("hex");
+  }
   return createHash("sha256").update(data).digest("hex");
 }
 
 /**
  * Generate a simple CID-like hash (using SHA256 for simplicity)
  */
-function generateCID(data: string): string {
+function generateCID(data: string | undefined): string {
   return "bafkreic" + calculateSHA256(data).substring(0, 40);
 }
 
@@ -46,6 +55,16 @@ interface CreateSimulatedPromptParams {
 export async function createSimulatedPrompt(
   params: CreateSimulatedPromptParams
 ): Promise<string> {
+  // Validate required fields
+  if (!params.question) {
+    console.error('[prompt-creation] ❌ Missing required field: question', params);
+    throw new Error('Cannot create prompt without question field');
+  }
+  if (!params.fullPrompt) {
+    console.error('[prompt-creation] ❌ Missing required field: fullPrompt', params);
+    throw new Error('Cannot create prompt without fullPrompt field');
+  }
+
   console.log(
     `[prompt-creation] Starting to create prompt: ${params.question.substring(0, 30)}...`
   );
@@ -63,6 +82,32 @@ export async function createSimulatedPrompt(
     `[prompt-creation] Calculated hashes - Question SHA256: ${questionSHA256.substring(0, 10)}...`
   );
 
+  // Create a unique registration hash based on prompt ID and question
+  // This ensures uniqueness for the hash registration
+  const registrationData = `${promptId}-${params.question}`;
+  const registrationSHA256 = calculateSHA256(registrationData);
+  const registrationCID = generateCID(registrationData);
+
+  console.log(
+    `[prompt-creation] Registration hash: ${registrationSHA256.substring(0, 10)}...`
+  );
+
+  // Insert hash registration first (with conflict handling in case of duplicates)
+  try {
+    await db
+      .insert(hashRegistrationsTable)
+      .values({
+        cid: registrationCID,
+        sha256: registrationSHA256,
+        uploaderId: params.userId,
+      })
+      .onConflictDoNothing(); // In case the same hash already exists
+    console.log(`[prompt-creation] ✅ Created hash registration`);
+  } catch (error) {
+    console.error(`[prompt-creation] ❌ Failed to create hash registration:`, error);
+    throw error;
+  }
+
   const promptData = {
     id: promptId,
     type:
@@ -78,6 +123,10 @@ export async function createSimulatedPrompt(
     answerKey: params.answerKey,
     answer: params.answer,
     options: params.options,
+
+    // Set the hash registration fields
+    hashSha256Registration: registrationSHA256,
+    hashCIDRegistration: registrationCID,
 
     // TODO: Metadata is not available in the schema yet
     // metadata: {
@@ -95,7 +144,16 @@ export async function createSimulatedPrompt(
 
   // Insert prompt into database
   try {
-    await db.insert(promptsTable).values(promptData);
+    await db.insert(promptsTable).values({
+      ...promptData,
+      hashSha256Registration: await pbCalculateSHA256(
+        stableStringify(promptData)!
+      ),
+      hashCIDRegistration: await calculateCID(
+        stableStringify(promptData)!
+      ).then((c) => c.toString()),
+      uploaderId: params.userId,
+    });
     console.log(
       `[prompt-creation] ✅ Successfully inserted prompt ${promptId}`
     );
@@ -137,7 +195,7 @@ export async function batchCreateSimulatedPrompts(
       promptIds.push(id);
     } catch (error) {
       console.error(
-        `Failed to create prompt: ${prompt.question.substring(0, 30)}...`,
+        `Failed to create prompt: ${prompt.question?.substring(0, 30) || '[no question]'}...`,
         error
       );
     }

@@ -24,7 +24,7 @@ import {
   SQL,
   sql,
 } from "drizzle-orm";
-import { PromptType } from "@peerbench/sdk";
+import { PromptType } from "peerbench";
 import { DbOptions, PaginationOptions } from "@/types/db";
 import { withTxOrDb } from "@/database/helpers";
 import { paginateQuery } from "@/database/query";

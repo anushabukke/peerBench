@@ -16,7 +16,7 @@ interface MessageModalProps {
   open?: boolean;
   onClose?: () => void;
   title?: string;
-  message: string;
+  message: React.ReactNode;
   buttonText?: string;
   icon?: React.ReactNode;
 }

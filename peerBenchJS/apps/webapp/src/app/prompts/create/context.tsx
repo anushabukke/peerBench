@@ -11,7 +11,7 @@ import {
   PromptScore,
   PromptType,
   PromptTypes,
-} from "@peerbench/sdk";
+} from "peerbench";
 import React, {
   createContext,
   useContext,
@@ -123,20 +123,16 @@ export function PageContextProvider({ children }: { children: ReactNode }) {
 
   const providers = useProviders();
   const [prompt, setPrompt] = useState<Prompt>({
-    did: "",
+    promptUUID: "",
     answer: "",
     answerKey: "",
-    fullPrompt: {
-      data: "",
-      cid: "",
-      sha256: "",
-    },
+    fullPrompt: "",
+    fullPromptCID: "",
+    fullPromptSHA256: "",
     options: {},
-    question: {
-      data: "",
-      cid: "",
-      sha256: "",
-    },
+    prompt: "",
+    promptCID: "",
+    promptSHA256: "",
     type: PromptTypes.MultipleChoice,
     metadata: {},
     scorers: [],
@@ -189,20 +185,16 @@ export function PageContextProvider({ children }: { children: ReactNode }) {
 
   const clearPrompt = () => {
     setPrompt({
-      did: "",
+      promptUUID: "",
       answer: "",
       answerKey: "",
-      fullPrompt: {
-        data: "",
-        cid: "",
-        sha256: "",
-      },
+      fullPrompt: "",
+      fullPromptCID: "",
+      fullPromptSHA256: "",
       options: {},
-      question: {
-        data: "",
-        cid: "",
-        sha256: "",
-      },
+      prompt: "",
+      promptCID: "",
+      promptSHA256: "",
       type: PromptTypes.MultipleChoice,
       metadata: {},
       scorers: [],

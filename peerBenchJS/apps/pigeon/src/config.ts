@@ -13,7 +13,7 @@ import {
   MULTIPLE_CHOICE_SYSTEM_PROMPT,
   PromptTypes,
   OPEN_ENDED_SYSTEM_PROMPT,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { join } from "path";
 
 config({

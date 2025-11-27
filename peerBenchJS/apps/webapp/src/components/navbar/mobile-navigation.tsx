@@ -94,9 +94,9 @@ export function MobileNavigation({ user }: { user: User | null }) {
                         rel="noopener noreferrer"
                         className="block px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-100 dark:hover:bg-gray-800 rounded-md cursor-pointer"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className={(link as any).iconOnly ? "flex items-center justify-center" : "flex items-center gap-2"}>
                           {link.icon}
-                          {link.label}
+                          {!(link as any).iconOnly && link.label}
                           {(link as any).iconSuffix}
                         </div>
                       </a>

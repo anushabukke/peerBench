@@ -94,7 +94,7 @@ export default function Form() {
             transition={{ duration: 0.3 }}
           >
             <Image
-              src="/logo.png"
+              src="/logo-gradient.svg"
               alt="PeerBench Logo"
               width={120}
               height={40}

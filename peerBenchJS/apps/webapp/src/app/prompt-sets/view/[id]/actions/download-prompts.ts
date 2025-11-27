@@ -1,7 +1,6 @@
 "use server";
 
 import { PromptService } from "@/services/prompt.service";
-import { PromptSetAccessReasons } from "@/types/prompt-set";
 
 export async function downloadAllPromptsAction(data: {
   promptSetId: number;
@@ -14,7 +13,6 @@ export async function downloadAllPromptsAction(data: {
       promptSetId: data.promptSetId,
     },
     requestedByUserId: data.userId,
-    accessReason: PromptSetAccessReasons.runBenchmark,
     page: 1,
     pageSize: 100000, // Large page size to get all prompts
   });

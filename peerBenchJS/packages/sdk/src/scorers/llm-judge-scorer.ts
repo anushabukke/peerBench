@@ -97,7 +97,7 @@ export class LLMJudgeScorer extends AbstractScorer {
     options: z.infer<typeof this.optionsSchema>,
     provider: BaseLLMProvider
   ): Promise<PromptScore | undefined> {
-    let task = response.prompt.fullPrompt.data;
+    let task = response.prompt.fullPrompt;
 
     if (response.prompt.type === PromptTypes.MultipleChoice) {
       task += `\nCorrect answer: ${response.prompt.answerKey} - ${response.prompt.answer}`;
@@ -224,7 +224,7 @@ export class LLMJudgeScorer extends AbstractScorer {
 
     const norm = this.normalizeWeights(options.criteria);
     const user = [
-      `TASK:\n${response.prompt.fullPrompt.data}`,
+      `TASK:\n${response.prompt.fullPrompt}`,
       options.meta
         ? `\nADDITIONAL CONTEXT:\n${JSON.stringify(options.meta, null, 2)}`
         : "",

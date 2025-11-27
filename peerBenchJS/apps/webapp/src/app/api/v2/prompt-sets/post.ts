@@ -1,15 +1,17 @@
 import { createHandler } from "@/lib/route-kit";
 import { auth } from "@/lib/route-kit/middlewares/auth";
-import { checkValidation } from "@/lib/route-helpers/check-validation";
 import {
   InsertPromptSetData,
   PromptSetService,
 } from "@/services/promptset.service";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { EnumSchema } from "@peerbench/sdk";
+import { EnumSchema } from "peerbench";
 import { PromptSetLicenses } from "@/database/types";
 import { DatabaseError } from "pg";
+import { parseBody } from "@/lib/route-kit/middlewares/parse-body";
+import { ApiError } from "@/errors/api-error";
+import { promptFiltersSchema } from "@/validation/api/prompt-filters";
 
 const bodySchema = z
   .object(
@@ -21,6 +23,7 @@ const bodySchema = z
       citationInfo: z.string().optional(),
       isPublic: z.boolean().optional(),
       isPublicSubmissionsAllowed: z.boolean().optional(),
+      promptsToInclude: promptFiltersSchema.optional(),
     },
     { message: "Missing body" }
   )
@@ -28,8 +31,7 @@ const bodySchema = z
     if (!value.isPublic && value.isPublicSubmissionsAllowed) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message:
-          "Public submissions are not allowed for non-public Benchmarks",
+        message: "Public submissions are not allowed for non-public Benchmarks",
       });
       return z.NEVER;
     }
@@ -39,24 +41,19 @@ const bodySchema = z
 
 export const POST = createHandler()
   .use(auth)
+  .use(parseBody(bodySchema))
   .handle(async (req, ctx) => {
-    const body = checkValidation(
-      bodySchema.safeParse(
-        // Fallback to empty object if no body is provided
-        await req.json().catch(() => ({}))
-      )
-    );
-
     try {
       const promptSet = await PromptSetService.insertPromptSet({
         ownerId: ctx.userId,
-        description: body.description,
-        title: body.title,
-        license: body.license,
-        category: body.category,
-        citationInfo: body.citationInfo,
-        isPublic: body.isPublic,
-        isPublicSubmissionsAllowed: body.isPublicSubmissionsAllowed,
+        description: ctx.body.description,
+        title: ctx.body.title,
+        license: ctx.body.license,
+        category: ctx.body.category,
+        citationInfo: ctx.body.citationInfo,
+        isPublic: ctx.body.isPublic,
+        isPublicSubmissionsAllowed: ctx.body.isPublicSubmissionsAllowed,
+        promptsToInclude: ctx.body.promptsToInclude,
       });
 
       return NextResponse.json(promptSet);
@@ -68,11 +65,8 @@ export const POST = createHandler()
         err.code === "23505" &&
         err.detail?.includes("already exists")
       ) {
-        return NextResponse.json(
-          {
-            message: "Another Benchmark with the same title is already exist",
-          },
-          { status: 500 }
+        throw ApiError.badRequest(
+          "Another Benchmark with the same title is already exist"
         );
       }
 

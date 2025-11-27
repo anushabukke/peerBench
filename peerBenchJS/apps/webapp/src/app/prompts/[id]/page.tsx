@@ -31,7 +31,7 @@ export default async function PromptDetailPage({
     data: [prompt],
   } = await PromptService.getPrompts({
     filters: {
-      id: promptId,
+      id: [promptId],
     },
     requestedByUserId: user?.id ?? NULL_UUID,
     page: 1,

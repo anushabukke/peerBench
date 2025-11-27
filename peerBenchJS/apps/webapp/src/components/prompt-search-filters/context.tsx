@@ -24,8 +24,7 @@ export type Filters = {
   uploaderId: Filter<string>;
   status: Filter<string>;
   reviewedByUserId: Filter<string>;
-  excludeReviewed: Filter<boolean>;
-  onlyReviewed: Filter<boolean>;
+  excludeReviewedByUserId: Filter<string>;
   minAvgScore: Filter<string>;
   maxAvgScore: Filter<string>;
   minScoreCount: Filter<string>;
@@ -43,6 +42,8 @@ export type Filters = {
   minNegativeReviewsCount: Filter<string>;
   maxNegativeReviewsCount: Filter<string>;
   modelSlugs: Filter<string>;
+  maxPromptAgeDays: Filter<SelectOption<string> | null>;
+  maxGapToFirstResponse: Filter<string>;
 };
 
 export type PromptSearchFiltersContextType = {
@@ -151,15 +152,9 @@ export function PromptSearchFiltersContextProvider({
       defaultValue: "",
       value: urlSearchParams.get("reviewedByUserId") ?? "",
     },
-    excludeReviewed: {
-      defaultValue: false,
-      value: urlSearchParams.get("excludeReviewed")?.toLowerCase() === "true",
-      convertToSearchParamValue: (value) => (value ? "true" : undefined),
-    },
-    onlyReviewed: {
-      defaultValue: false,
-      value: urlSearchParams.get("onlyReviewed")?.toLowerCase() === "true",
-      convertToSearchParamValue: (value) => (value ? "true" : undefined),
+    excludeReviewedByUserId: {
+      defaultValue: "",
+      value: urlSearchParams.get("excludeReviewedByUserId") ?? "",
     },
     minAvgScore: {
       defaultValue: "",
@@ -228,6 +223,21 @@ export function PromptSearchFiltersContextProvider({
     modelSlugs: {
       defaultValue: "",
       value: urlSearchParams.get("modelSlugs") ?? "",
+    },
+    maxPromptAgeDays: {
+      defaultValue: null,
+      value: urlSearchParams.get("maxPromptAgeDays")
+        ? {
+            label: urlSearchParams.get("maxPromptAgeDays")!,
+            value: urlSearchParams.get("maxPromptAgeDays")!,
+          }
+        : null,
+      convertToSearchParamValue: (option) =>
+        option ? option?.value.toString() : undefined,
+    },
+    maxGapToFirstResponse: {
+      defaultValue: "",
+      value: urlSearchParams.get("maxGapToFirstResponse") ?? "",
     },
   });
   const isAnyFilterApplied = useMemo(() => {

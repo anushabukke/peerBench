@@ -352,7 +352,7 @@ Assuming all reviewers have ≥5 qualifying reviews, calculate Pearson correlati
 
 - **PeerBench Paper**: Section 4.2 - Three Leaderboards
 - **Implementation**: `/src/lib/leaderboard/`
-- **Admin Interface**: `/adminCalc`
+- **Admin Interface**: `/simScores001`
 
 ---
 

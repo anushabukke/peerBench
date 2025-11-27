@@ -98,7 +98,13 @@ export interface RealisticSimulationConfig extends SimulationMode {
   createPromptSets?: boolean;     // Whether to create new prompt sets
   promptSetsPublic?: boolean;     // Make prompt sets public
   submitToExisting?: boolean;     // Submit to existing prompt sets instead
+  targetPromptSetId?: number;     // Specific prompt set to submit to (when submitToExisting is true)
   promptType?: 'multiple_choice' | 'open_ended' | 'random';  // Type of prompts to generate
+  // Feedback options
+  feedbacksPerUser?: {            // How many feedbacks each user will try to do
+    min: number;
+    max: number;
+  };
   // Custom system prompts for LLM generation
   customPrompts?: {
     personalitySystem?: string;    // System prompt for personality generation
