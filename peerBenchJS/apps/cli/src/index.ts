@@ -8,8 +8,8 @@ import "@/commands/collect";
 import "@/commands/list";
 import "@/commands/list/components";
 import "@/commands/score";
+import "@/commands/aggregate";
 
-// import "@/commands/aggregate";
 // import "@/commands/upload";
 // import "@/commands/rephrase";
 // import "@/commands/std";

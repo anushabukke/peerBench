@@ -15,11 +15,25 @@ import {
   LucideLoader2,
   LucideUser,
   LucideFileText,
+  LucideActivity,
 } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
-import type { UserProfileFuture } from "@/services/user-profile.service";
+import type { User } from "@supabase/supabase-js";
+import { LoginButton } from "./login-button";
+import { useProfile } from "@/lib/react-query/use-profile";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const menuItems = [
+  {
+    label: "My Profile",
+    href: "/profile",
+    icon: <LucideUser className="w-5 h-5" />,
+  },
+  {
+    label: "My Activity",
+    href: "/myActivity",
+    icon: <LucideActivity className="w-5 h-5" />,
+  },
   {
     label: "Manage Documents",
     href: "/supporting-documents",
@@ -40,13 +54,14 @@ const menuItems = [
   },
 ];
 
-export function UserMenu({
-  profile,
-}: {
-  profile: NonNullable<UserProfileFuture>;
-}) {
+export function UserMenu({ user }: { user: User | null }) {
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const { data: profile, isLoading: isProfileLoading } = useProfile();
   const client = createClient();
+
+  if (!user) {
+    return <LoginButton />;
+  }
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -64,10 +79,16 @@ export function UserMenu({
         <button className="flex duration-300 transition-colors p-2 rounded-md items-center space-x-2 text-gray-700 dark:text-gray-300 hover:text-blue-700 hover:bg-gray-200 dark:hover:text-gray-300 hover:cursor-pointer">
           <div className="flex items-center space-x-2">
             <span className="hidden md:block text-sm">
-              {profile.displayName || profile.id}
+              {isProfileLoading ? (
+                <Skeleton className="h-4 w-24" />
+              ) : (
+                profile?.displayName || profile?.id
+              )}
             </span>
             <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center text-blue-700 dark:text-blue-300">
-              {profile.displayName ? (
+              {isProfileLoading ? (
+                <LucideUser size={16} />
+              ) : profile?.displayName ? (
                 profile.displayName
                   .split(" ")
                   .map((n) => n[0])

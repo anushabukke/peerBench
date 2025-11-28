@@ -31,7 +31,7 @@
     "_clean:logs": "rm -rf data/logs/*"
   },
   "dependencies": {
-    "@peerbench/sdk": "*",
+    "peerbench": "*",
     "@dotenvx/dotenvx": "^1.39.1",
     "@inquirer/prompts": "^7.4.1",
     "ansis": "^3.17.0",

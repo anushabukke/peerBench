@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import { LucideAlertCircle } from "lucide-react";
 import type { GetPromptSetLeaderboardReturnItem } from "@/services/promptset.service";
-import { formatMs } from "@peerbench/sdk";
+import { formatMs } from "peerbench";
 
 export type LeaderboardRowProps = GetPromptSetLeaderboardReturnItem & {
   index: number;

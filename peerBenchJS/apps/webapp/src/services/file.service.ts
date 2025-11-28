@@ -19,7 +19,7 @@ import {
   calculateSHA256,
   removeDIDPrefix,
   DataParser,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { eq, desc, and, count, inArray, asc, sql, or, SQL } from "drizzle-orm";
 import { EvaluationFileSchema } from "./evaluation.service";
 import { JSONSchema } from "@/validation/json-schema";
@@ -305,23 +305,28 @@ export class FileService {
         .values(
           result.prompts.map<DbPromptInsert>((prompt) => ({
             // TODO: Remove `removeDIDPrefix` once we implement "hashes" as primary keys
-            id: removeDIDPrefix(prompt.did),
-            question: prompt.question.data,
-            sha256: prompt.question.sha256,
-            cid: prompt.question.cid,
+            id: removeDIDPrefix(prompt.promptUUID),
+            question: prompt.prompt,
+            sha256: prompt.promptSHA256,
+            cid: prompt.promptCID,
             fileId: file.id,
 
             answerKey: prompt.answerKey,
             options: prompt.options,
             type: prompt.type,
 
-            fullPrompt: prompt.fullPrompt.data,
-            fullPromptCID: prompt.fullPrompt.cid,
-            fullPromptSHA256: prompt.fullPrompt.sha256,
+            fullPrompt: prompt.fullPrompt,
+            fullPromptCID: prompt.fullPromptCID,
+            fullPromptSHA256: prompt.fullPromptSHA256,
             answer: prompt.answer || "",
 
             promptSetId: data.promptSetId,
             metadata: prompt.metadata || {},
+
+            // TODO: This file approach is not used anymore. Review once we decided to refactor it.
+            hashSha256Registration: "",
+            hashCIDRegistration: "",
+            uploaderId: data.uploaderId,
           }))
         )
         // NOTE: Feels like wrong. Let's force the Prompts to be unique for the time being - mdk

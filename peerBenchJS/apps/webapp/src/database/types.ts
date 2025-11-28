@@ -65,9 +65,10 @@ export const QuickFeedbackOpinions = {
 export type QuickFeedbackOpinion =
   (typeof QuickFeedbackOpinions)[keyof typeof QuickFeedbackOpinions];
 
-// NOTE: These Provider identifiers should be matched with the Provider identifiers from the @peerbench/sdk package
+// NOTE: These Provider identifiers should be matched with the Provider identifiers from the peerbench package
 export const ApiKeyProviders = {
   openrouter: "openrouter.ai",
+  peerbench: "peerbench",
 } as const;
 export type ApiKeyProvider =
   (typeof ApiKeyProviders)[keyof typeof ApiKeyProviders];

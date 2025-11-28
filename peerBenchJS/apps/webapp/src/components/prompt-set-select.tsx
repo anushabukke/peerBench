@@ -13,7 +13,7 @@ import {
   reactSelectStyles,
   reactSelectDisabledStyles,
 } from "@/lib/styles/react-select-styles";
-import { PromptType } from "@peerbench/sdk";
+import { PromptType } from "peerbench";
 import { PromptSetAccessReason } from "@/types/prompt-set";
 import { usePromptSetAPI } from "@/lib/hooks/use-prompt-set-api";
 import { useSearchParams } from "next/navigation";
@@ -30,12 +30,6 @@ export type PromptSetSelectOption = {
   value?: string;
   label?: string;
   includingPromptTypes?: PromptType[];
-
-  /**
-   * Indicates whether the option is newly created.
-   * @deprecated Not in use anymore
-   */
-  __isNew__?: boolean;
 };
 
 export interface PromptSetSelectProps {
@@ -291,7 +285,6 @@ const PromptSetSelect = forwardRef<
 const formatOptionLabel = (data: unknown) => {
   const option = data as PromptSetSelectOption;
   const isDisabled = (option as any).isDisabled || false;
-  const isNew = option.__isNew__ || false;
 
   return (
     <div className="flex flex-col py-1 w-full">
@@ -299,32 +292,22 @@ const formatOptionLabel = (data: unknown) => {
         <span className="font-medium text-gray-900 dark:text-gray-100">
           {option.title || option.label}
         </span>
-        {!isDisabled && !isNew && (
+        {!isDisabled && (
           <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-md mx-2">
             ID: {option.id}
           </span>
         )}
-        {isNew && (
-          <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/20 px-2 py-1 rounded-md mx-2">
-            New
-          </span>
-        )}
       </div>
-      {option.description && !isDisabled && !isNew && (
+      {option.description && !isDisabled && (
         <span className="text-sm text-gray-600 dark:text-gray-300 mt-1 line-clamp-2">
           {option.description.length > 100
             ? `${option.description.slice(0, 100)}...`
             : option.description}
         </span>
       )}
-      {!isDisabled && !isNew && (
+      {!isDisabled && (
         <div className="flex items-center gap-4 mt-1 text-xs text-gray-500 dark:text-gray-400">
           <span>{option.totalPromptsCount} questions</span>
-        </div>
-      )}
-      {isNew && (
-        <div className="flex items-center gap-2 mt-1 text-xs">
-          <span>Create new benchmark</span>
         </div>
       )}
       {isDisabled && (

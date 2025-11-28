@@ -24,7 +24,7 @@ All components for the PeerBench leaderboard calculation system have been implem
 - ✅ `ReviewerLeaderboard.tsx` - Display reviewer rankings
 - ✅ `index.ts` - Component exports
 
-### Admin Page (`src/app/adminCalc/`)
+### Admin Page (`src/app/simScores001/`)
 - ✅ `page.tsx` - Main admin page (single page, client-side)
 
 ### Documentation (`docs/algo/scores0001/`)
@@ -35,7 +35,7 @@ All components for the PeerBench leaderboard calculation system have been implem
 
 ### 1. Access the Admin Page
 
-Navigate to: **`/adminCalc`**
+Navigate to: **`/simScores001`**
 
 ### 2. Choose Data Source
 
@@ -212,4 +212,4 @@ Full algorithm documentation with mathematical formulas and examples:
 
 ## 🎉 Ready to Use!
 
-Navigate to **`/adminCalc`** and start experimenting with the leaderboard algorithms!
+Navigate to **`/simScores001`** and start experimenting with the leaderboard algorithms!

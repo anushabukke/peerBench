@@ -5,7 +5,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "react-toastify";
-import { calculateCID, calculateSHA256, Prompt } from "@peerbench/sdk";
+import { calculateCID, calculateSHA256, Prompt } from "peerbench";
 import { errorMessage } from "@/utils/error-message";
 import {
   LucideLoader2,

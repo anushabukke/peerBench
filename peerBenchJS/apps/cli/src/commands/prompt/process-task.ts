@@ -1,17 +1,17 @@
 import {
-  AbstractTaskSchema,
+  AbstractParser,
   BaseLLMProvider,
   calculateCID,
   calculateSHA256,
   ModelInfo,
   PromptResponse,
-  Task,
+  ParseResult,
   SENTENCE_REORDER_SYSTEM_PROMPT,
   MULTIPLE_CHOICE_SYSTEM_PROMPT,
   TEXT_REPLACEMENT_SYSTEM_PROMPT,
   TYPO_SYSTEM_PROMPT,
-} from "@peerbench/sdk";
-import { join } from "path";
+} from "peerbench";
+import { join, basename } from "path";
 import { createJsonArrayStream } from "@/utils/json-array-stream";
 import { dateString } from "@/utils/date-string";
 import { normalizePath } from "@/utils/normalize-path";
@@ -22,8 +22,9 @@ import { hashFile } from "@/utils/hash-file";
 import { signFile } from "@/utils/sign-file";
 
 export async function processTask(params: {
-  task: Task;
-  schema: AbstractTaskSchema;
+  data: ParseResult;
+  parser: AbstractParser;
+  path: string;
   outputDir: string;
   provider: BaseLLMProvider;
   modelInfo: ModelInfo;
@@ -32,21 +33,22 @@ export async function processTask(params: {
   systemPrompt?: string;
   maxPrompts?: number;
 }) {
+  const fileName = basename(params.path);
   const logger = mainLogger.child({
-    context: `Provider(${params.provider.identifier}:${params.modelInfo.provider}/${params.modelInfo.name}, ${params.task.fileName})`,
+    context: `Provider(${params.provider.identifier}:${params.modelInfo.provider}/${params.modelInfo.name}, ${fileName})`,
   });
   // Build the file name
   const tags =
     params.tags && params.tags.length > 0 ? `.${params.tags.join("-")}` : "";
   const timestamp = dateString();
-  const fileName = normalizePath(
-    `${params.task.fileName}.${params.provider.identifier}.${params.modelInfo.owner}.${params.modelInfo.name}.${timestamp}.responses${tags}.json`
+  const outputFileName = normalizePath(
+    `${fileName}.${params.provider.identifier}.${params.modelInfo.owner}.${params.modelInfo.name}.${timestamp}.responses${tags}.json`
   );
-  const filePath = join(params.outputDir, fileName);
+  const filePath = join(params.outputDir, outputFileName);
   const stream = createJsonArrayStream(filePath);
 
-  for (let i = 0; i < params.task.prompts.length; i++) {
-    const prompt = params.task.prompts[i];
+  for (let i = 0; i < params.data.prompts.length; i++) {
+    const prompt = params.data.prompts[i];
 
     // If the max prompt is set and the it exceeds the limit, break the loop
     if (params.maxPrompts !== undefined && i + 1 > params.maxPrompts) {
@@ -75,12 +77,12 @@ export async function processTask(params: {
         }
       }
 
-      logger.info(`Sending prompt ${prompt.did} to ${params.modelInfo.id}`);
-      const response = await params.provider.forward(prompt.fullPrompt.data, {
+      logger.info(`Sending prompt ${prompt.promptUUID} to ${params.modelInfo.id}`);
+      const response = await params.provider.forward(prompt.fullPrompt, {
         model: params.modelInfo.id,
         system: systemPrompt,
       });
-      logger.debug(`Prompt ${prompt.did} response: ${response.data}`);
+      logger.debug(`Prompt ${prompt.promptUUID} response: ${response.data}`);
 
       const responseObject: PromptResponse = {
         prompt,
@@ -90,14 +92,9 @@ export async function processTask(params: {
         modelOwner: params.modelInfo.owner,
         provider: params.provider.identifier,
         runId: params.runId,
-        sourceTaskFile: {
-          cid: params.task.cid,
-          sha256: params.task.sha256,
-          fileName: params.task.fileName,
-        },
         startedAt: response.startedAt.getTime(),
         finishedAt: response.completedAt.getTime(),
-        taskId: params.task.did,
+        did: `did:response:${crypto.randomUUID()}`,
 
         data: response.data,
         cid: await calculateCID(response.data).then((c) => c.toString()),
@@ -106,11 +103,11 @@ export async function processTask(params: {
 
       // Save each Response to the file.
       await stream.write(responseObject);
-      logger.info(`Prompt ${prompt.did} response saved successfully`);
+      logger.info(`Prompt ${prompt.promptUUID} response saved successfully`);
     } catch (err) {
       const error = ensureError(err);
       logger.error(
-        `Error while sending prompt ${prompt.did}: ${env().isDev ? error.message : error.stack}`
+        `Error while sending prompt ${prompt.promptUUID}: ${env().isDev ? error.message : error.stack}`
       );
     }
   }

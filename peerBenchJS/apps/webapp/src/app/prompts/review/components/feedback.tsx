@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { toast } from "react-toastify";
-import { Loader2, CheckCircle, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { errorMessage } from "@/utils/error-message";
 import { usePromptAPI } from "@/lib/hooks/use-prompt-api";
 import { useRouter } from "next/navigation";
@@ -13,9 +13,10 @@ import Link from "next/link";
 
 export interface FeedbackProps {
   promptId: string;
+  onSubmittingChange?: (isSubmitting: boolean) => void;
 }
 
-export default function Feedback({ promptId }: FeedbackProps) {
+export default function Feedback({ promptId, onSubmittingChange }: FeedbackProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const { upsertQuickFeedback } = usePromptAPI();
@@ -23,6 +24,7 @@ export default function Feedback({ promptId }: FeedbackProps) {
 
   const handleOpinionClick = async (opinion: QuickFeedbackOpinion) => {
     setIsSubmitting(true);
+    onSubmittingChange?.(true);
 
     try {
       // Submit feedback immediately
@@ -48,6 +50,7 @@ export default function Feedback({ promptId }: FeedbackProps) {
       console.error(err);
       toast.error(`Failed: ${errorMessage(err)}`);
       setIsSubmitting(false);
+      onSubmittingChange?.(false);
     }
   };
 
@@ -58,6 +61,7 @@ export default function Feedback({ promptId }: FeedbackProps) {
   const handleNextPromptClick = () => {
     setIsSubmitted(false);
     setIsSubmitting(false);
+    onSubmittingChange?.(false);
 
     router.refresh();
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -65,15 +69,6 @@ export default function Feedback({ promptId }: FeedbackProps) {
 
   return (
     <>
-      {isSubmitted && (
-        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center space-x-2">
-          <CheckCircle className="h-5 w-5 text-green-500" />
-          <span className="text-green-700 text-sm font-medium">
-            Feedback submitted, loading next prompt...
-          </span>
-        </div>
-      )}
-
       <div className="space-y-4">
         {/* Opinion Selection */}
         <div className="space-y-3">
@@ -144,13 +139,6 @@ export default function Feedback({ promptId }: FeedbackProps) {
             </Button>
           </div>
         </div>
-
-        {isSubmitting && (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-            <span className="ml-2 text-sm text-gray-600">Submitting feedback...</span>
-          </div>
-        )}
       </div>
     </>
   );

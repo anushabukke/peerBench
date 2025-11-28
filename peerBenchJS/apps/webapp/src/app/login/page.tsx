@@ -16,17 +16,12 @@ import {
 import { AlertCircle, Loader2 } from "lucide-react";
 import { signIn } from "@/lib/actions/auth";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useSettingOpenRouterKey } from "@/lib/hooks/settings/use-setting-openrouter-key";
+import { useQueryClient } from "@tanstack/react-query";
+import { useOpenRouterServerKey } from "@/lib/react-query/use-openrouter-server-key";
 import Image from "next/image";
 import Link from "next/link";
 import * as yup from "yup";
-import { useDispatch } from "react-redux";
-import { AppDispatch } from "@/redux/store";
-import { fetchUser } from "@/redux/slices/userSlice";
-import { useRefreshDataAfterAuth } from "@/hooks/useRefreshDataAfterAuth";
-import { useSettingOpenRouterKey } from "@/lib/hooks/settings/use-setting-openrouter-key";
-import { useApiKeyApi } from "@/lib/hooks/use-apikey-api";
-import { ApiKeyProviders } from "@/database/types";
-import { useQueryClient } from "@tanstack/react-query";
 
 const loginSchema = yup.object({
   email: yup
@@ -44,13 +39,11 @@ type LoginFormData = yup.InferType<typeof loginSchema>;
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const dispatch = useDispatch<AppDispatch>();
-  const { refreshAllData } = useRefreshDataAfterAuth();
-  const { getApiKey } = useApiKeyApi();
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [openRouterApiKey, setOpenRouterApiKey] = useSettingOpenRouterKey();
+  const { refetch: getOpenRouterServerKey } = useOpenRouterServerKey(false);
   const invitationCode = searchParams.get("code");
   const redirectPath = searchParams.get("redirect");
   const queryClient = useQueryClient();
@@ -80,24 +73,16 @@ export default function LoginPage() {
         return;
       }
 
-      // If user doesn't have an API key settled, try to get one from the server
-      if (!openRouterApiKey) {
-        const apiKey = await getApiKey(ApiKeyProviders.openrouter);
-        if (apiKey?.key) {
-          setOpenRouterApiKey(apiKey.key);
-        }
-      }
-
-      // Dispatch user result to Redux store
-      if ("data" in result && result.data) {
-        // Using 'as any' to avoid typing issues
-        dispatch(fetchUser.fulfilled(result.data as any, ""));
-
-        await refreshAllData();
-      }
-
       // Invalidate all the cached queries
       queryClient.invalidateQueries();
+
+      // If user doesn't have an API key settled, try to get one from the server
+      if (!openRouterApiKey) {
+        const apiKey = await getOpenRouterServerKey();
+        if (apiKey.data !== undefined) {
+          setOpenRouterApiKey(apiKey.data);
+        }
+      }
 
       startTransition(() => {
         if (invitationCode) {
@@ -136,7 +121,7 @@ export default function LoginPage() {
           <CardHeader className="text-center pb-6">
             <div className="flex justify-center mb-4">
               <Image
-                src="/logo.png"
+                src="/logo-gradient.svg"
                 alt="PeerBench Logo"
                 width={120}
                 height={40}

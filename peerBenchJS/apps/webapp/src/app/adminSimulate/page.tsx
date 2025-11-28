@@ -1,11 +1,10 @@
-import { getUser } from "@/lib/actions/auth";
+import { getAdminUser } from "@/lib/actions/auth";
 import { redirect } from "next/navigation";
 import { SimulationControlPanel } from "./components/simulation-control-panel";
 
 export default async function AdminSimulatePage() {
-  const user = await getUser();
+  const user = await getAdminUser();
 
-  // TODO: Add proper admin check
   if (!user) {
     redirect("/");
   }
@@ -17,7 +16,8 @@ export default async function AdminSimulatePage() {
           Admin Simulation Panel
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Generate simulated users, prompts, and feedback for development and testing
+          Generate simulated users, prompts, and feedback for development and
+          testing
         </p>
       </div>
 

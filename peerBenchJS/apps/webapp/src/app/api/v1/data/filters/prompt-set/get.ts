@@ -6,7 +6,7 @@ import { smoothAuth } from "@/lib/route-kit/middlewares/smooth-auth";
 import { FilterService, PromptSetFilter } from "@/services/filter.service";
 import { PaginatedResponse } from "@/types/db";
 import { PromptSetAccessReasons } from "@/types/prompt-set";
-import { EnumSchema } from "@peerbench/sdk";
+import { EnumSchema } from "peerbench";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 

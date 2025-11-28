@@ -35,29 +35,24 @@ export type ScoringMethod =
 export const PromptSchema = z
   .object({
     /**
-     * Decentralized identifier of the Prompt
+     * Unique identifier of the Prompt
      */
-    did: DIDasUUIDSchema,
+    promptUUID: DIDasUUIDSchema, // This schema also accepts without `did:<entity type>:` prefix
 
     /**
-     * The question that is going to be asked to the model
+     * Prompt data itself
      */
-    question: z.object({
-      /**
-       * Question data itself
-       */
-      data: z.string(),
+    prompt: z.string(),
 
-      /**
-       * CID v1 calculation of the question string
-       */
-      cid: z.string(),
+    /**
+     * CID v1 calculation of the Prompt string
+     */
+    promptCID: z.string(),
 
-      /**
-       * SHA256 hash of the question string
-       */
-      sha256: z.string(),
-    }),
+    /**
+     * SHA256 hash of the Prompt string
+     */
+    promptSHA256: z.string(),
 
     /**
      * Multiple choice answers for the question where the keys are letters and the values are the answers.
@@ -65,24 +60,19 @@ export const PromptSchema = z
     options: z.record(z.string(), z.string()).optional(),
 
     /**
-     * Full prompt that is going to be sent to the model
+     * Full Prompt string that is being sent
      */
-    fullPrompt: z.object({
-      /**
-       * Full prompt itself
-       */
-      data: z.string(),
+    fullPrompt: z.string(),
 
-      /**
-       * CID v1 calculation of the full prompt string
-       */
-      cid: z.string(),
+    /**
+     * CID v1 calculation of the full Prompt string
+     */
+    fullPromptCID: z.string(),
 
-      /**
-       * SHA256 hash of the full prompt string
-       */
-      sha256: z.string(),
-    }),
+    /**
+     * SHA256 hash of the full Prompt string
+     */
+    fullPromptSHA256: z.string(),
 
     /**
      * Type of the Prompt
@@ -156,43 +146,6 @@ export const PromptSchema = z
  * PeerBench Prompt object
  */
 export type Prompt = z.infer<typeof PromptSchema>;
-
-export const TaskSchema = z.object({
-  /**
-   * Decentralized identifier of the Task
-   */
-  did: z.string().startsWith("did:task:"),
-
-  /**
-   * The Prompts that the Task has
-   */
-  prompts: z.array(PromptSchema),
-
-  /**
-   * CID v1 calculation of the Task file
-   */
-  cid: z.string(),
-
-  /**
-   * SHA256 calculation of the Task file
-   */
-  sha256: z.string(),
-
-  /**
-   * Basename of the Task file
-   */
-  fileName: z.string(),
-
-  /**
-   * Full path of the Task file
-   */
-  path: z.string(),
-});
-
-/**
- * Task object that includes the prompts and the Task file metadata
- */
-export type Task = z.infer<typeof TaskSchema>;
 
 export const PromptResponseSchema = z.object({
   /**
@@ -278,13 +231,8 @@ export const PromptScoreSchema = PromptResponseSchema.extend({
       .extend({
         options: PromptSchema.sourceType().shape.options.optional(),
 
-        question: PromptSchema.sourceType().shape.question.extend({
-          data: PromptSchema.sourceType().shape.question.shape.data.optional(),
-        }),
-
-        fullPrompt: PromptSchema.sourceType().shape.fullPrompt.extend({
-          data: PromptSchema.sourceType().shape.fullPrompt.shape.data.optional(),
-        }),
+        prompt: PromptSchema.sourceType().shape.prompt.optional(),
+        fullPrompt: PromptSchema.sourceType().shape.fullPrompt.optional(),
 
         type: PromptSchema.sourceType().shape.type.optional(),
         answer: PromptSchema.sourceType().shape.answer.optional(),

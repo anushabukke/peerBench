@@ -1,11 +1,10 @@
-import { getUser } from "@/lib/actions/auth";
+import { getAdminUser } from "@/lib/actions/auth";
 import { redirect } from "next/navigation";
 import { RoutesDirectory } from "./components/routes-directory";
 
 export default async function AdminRoutesPage() {
-  const user = await getUser();
+  const user = await getAdminUser();
 
-  // TODO: Add proper admin check
   if (!user) {
     redirect("/");
   }

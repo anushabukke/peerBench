@@ -19,7 +19,7 @@ The application uses a flexible abstraction pattern for defining data collection
 Create a new collector class that extends the base collector interface:
 
 ```typescript
-import { BaseCollector } from "@peerbench/sdk";
+import { BaseCollector } from "peerbench";
 
 export class ArxivCollector extends BaseCollector {
   async collect(source: string, options?: any) {
@@ -79,7 +79,7 @@ private getCollectorKey(collector: any): string {
 Create a new generator class that extends the base generator interface:
 
 ```typescript
-import { BaseGenerator } from "@peerbench/sdk";
+import { BaseGenerator } from "peerbench";
 
 export class CustomGenerator extends BaseGenerator {
   async generatePrompts(data: any[], options?: any) {

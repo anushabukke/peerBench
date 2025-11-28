@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LucideHash, LucideSquareArrowOutUpRight } from "lucide-react";
-import { PromptTypes } from "@peerbench/sdk";
+import { PromptTypes } from "peerbench";
 import { cn } from "@/utils/cn";
 import Link from "next/link";
 import { PromptItem } from "@/lib/hooks/use-prompt-api";

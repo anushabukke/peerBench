@@ -1,4 +1,4 @@
-import { Prompt, PromptTypes } from "@peerbench/sdk";
+import { Prompt, PromptTypes } from "peerbench";
 import { Loader2, LucideHash } from "lucide-react";
 import {
   Accordion,
@@ -32,7 +32,8 @@ export default function PromptsPreview({
 }: PromptsPreviewProps) {
   const [showAll, setShowAll] = useState(false);
   const displayPrompts = showAll && allPrompts ? allPrompts : samplePrompts;
-  const hasMoreThanSample = allPrompts && allPrompts.length > samplePrompts.length;
+  const hasMoreThanSample =
+    allPrompts && allPrompts.length > samplePrompts.length;
   return (
     <div
       className={`border rounded-lg p-4 bg-gray-50 dark:bg-gray-800 ${isLoading ? "opacity-50 pointer-events-none" : ""}`}
@@ -57,11 +58,13 @@ export default function PromptsPreview({
                     {totalPrompts !== undefined
                       ? `${displayPrompts.length} of ${totalPrompts} prompts`
                       : `${displayPrompts.length} prompts`}
-                    {totalPrompts && totalPrompts > displayPrompts.length && !showAll && (
-                      <span className="text-xs text-gray-500 dark:text-gray-500 ml-1">
-                        (showing samples)
-                      </span>
-                    )}
+                    {totalPrompts &&
+                      totalPrompts > displayPrompts.length &&
+                      !showAll && (
+                        <span className="text-xs text-gray-500 dark:text-gray-500 ml-1">
+                          (showing samples)
+                        </span>
+                      )}
                   </span>
                 )
               )}
@@ -74,7 +77,7 @@ export default function PromptsPreview({
                   <div key={index} className="flex flex-col gap-2">
                     <div className="flex items-center gap-1 text-xs text-gray-400">
                       <LucideHash size={12} />
-                      {prompt.did}
+                      {prompt.promptUUID}
                     </div>
                     <div className="border rounded p-3 bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600">
                       <PromptRenderer

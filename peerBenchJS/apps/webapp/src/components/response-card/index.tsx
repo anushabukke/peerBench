@@ -55,13 +55,6 @@ function ResponseCard({
                 {modelInfo.modelId || "Unknown"}
               </h3>
 
-              {responseId && (
-                <div className="flex gap-1 items-center text-xs text-gray-500">
-                  <LucideHash size={12} />
-                  {responseId}
-                </div>
-              )}
-
               {findComponent(children, QuickFeedbackButtons)}
             </div>
 
@@ -71,6 +64,22 @@ function ResponseCard({
                 {capitalize(modelInfo.provider || "Unknown", true)}
               </div>
             </div>
+
+            <div className="flex flex-wrap gap-4 text-sm text-gray-600 mt-1">
+              {startedAt && finishedAt && (
+                <div className="flex gap-2 items-center">
+                  <LucideClock size={14} />
+                  <span>{DateTime.fromISO(finishedAt).toFormat("TTT, DD")}</span>
+                </div>
+              )}
+            </div>
+
+            {responseId && (
+              <div className="flex gap-1 items-center text-sm text-gray-500 mt-1">
+                <LucideHash size={14} />
+                {responseId}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {getScoreIcon(score)}
@@ -96,15 +105,6 @@ function ResponseCard({
               )}
             </div>
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-4 text-sm text-gray-600">
-          {startedAt && finishedAt && (
-            <div className="flex gap-2 items-center">
-              <LucideClock size={14} />
-              <span>{DateTime.fromISO(finishedAt).toFormat("TTT, DD")}</span>
-            </div>
-          )}
         </div>
       </CardHeader>
 

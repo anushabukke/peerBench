@@ -15,8 +15,8 @@ import { z } from "zod";
  * Builds a valid Prompt object from the given parameters.
  */
 export async function buildPrompt(params: {
-  did?: string;
-  question: string;
+  uuid?: string;
+  prompt: string;
   fullPrompt?: string;
   options?: Record<string, string>;
   answer?: string;
@@ -25,21 +25,26 @@ export async function buildPrompt(params: {
   metadata?: Record<string, any>;
   scorers?: string[];
 }) {
+  const promptData = params.prompt;
+  const fullPrompt = params.fullPrompt ?? params.prompt;
+
+  const [promptCID, promptSHA256, fullPromptCID, fullPromptSHA256] =
+    await Promise.all([
+      calculateCID(promptData).then((c) => c.toString()),
+      calculateSHA256(promptData),
+      calculateCID(fullPrompt).then((c) => c.toString()),
+      calculateSHA256(fullPrompt),
+    ]);
+
   return PromptSchema.parse({
-    did: params.did ?? uuidv7(),
+    promptUUID: params.uuid ?? uuidv7(),
+    prompt: promptData,
+    promptCID,
+    promptSHA256,
+    fullPrompt: fullPrompt,
+    fullPromptCID,
+    fullPromptSHA256,
     options: params.options ?? undefined,
-    question: {
-      data: params.question,
-      cid: await calculateCID(params.question).then((c) => c.toString()),
-      sha256: await calculateSHA256(params.question),
-    },
-    fullPrompt: {
-      data: params.fullPrompt ?? params.question,
-      cid: await calculateCID(params.fullPrompt ?? params.question).then((c) =>
-        c.toString()
-      ),
-      sha256: await calculateSHA256(params.fullPrompt ?? params.question),
-    },
     type: params.type,
     answer: params.answer ?? undefined,
     answerKey: params.answerKey ?? undefined,

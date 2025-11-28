@@ -88,7 +88,7 @@ export class MMLUProParser extends AbstractParser {
       prompts.push(
         await buildPrompt({
           options,
-          question: rawPrompt.question,
+          prompt: rawPrompt.question,
           answerKey,
           answer: rawPrompt.options[rawPrompt.answer_index],
           fullPrompt,

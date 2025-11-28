@@ -35,7 +35,7 @@ import {
   OpenRouterProvider,
   PromptScoreSchema,
   PromptType,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { ForestAIAuditFileSchema } from "@/validation/forest-ai-audit-file";
 import { z } from "zod";
 import { v7 as uuidv7 } from "uuid";

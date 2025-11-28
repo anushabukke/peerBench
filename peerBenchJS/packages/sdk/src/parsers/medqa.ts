@@ -69,7 +69,7 @@ export class MedQAParser extends AbstractParser {
       prompts.push(
         await buildPrompt({
           options: rawPrompt.options,
-          question: rawPrompt.question,
+          prompt: rawPrompt.question,
           type: PromptTypes.MultipleChoice,
           answer: rawPrompt.answer,
           answerKey: rawPrompt.answer_idx,

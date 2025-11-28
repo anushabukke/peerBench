@@ -1,5 +1,5 @@
 import { scorers } from "@/scorers";
-import { PromptResponse } from "@peerbench/sdk";
+import { PromptResponse } from "peerbench";
 
 /**
  * Search through all the available Scorers and tries to find a

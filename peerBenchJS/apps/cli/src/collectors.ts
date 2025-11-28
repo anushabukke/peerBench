@@ -2,7 +2,7 @@ import {
   AbstractCollector,
   PubMedCollector,
   StringCollector,
-} from "@peerbench/sdk";
+} from "peerbench";
 
 export const collectors: AbstractCollector<unknown>[] = [
   new StringCollector(),

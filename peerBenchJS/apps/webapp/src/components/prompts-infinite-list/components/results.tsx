@@ -7,7 +7,6 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { usePromptSearchFiltersContext } from "@/components/prompt-search-filters/context";
 import { useDebounce } from "@/lib/hooks/use-debounce";
 import { PromptItem, usePromptAPI } from "@/lib/hooks/use-prompt-api";
-import type { RequestQueryParams as GetPromptsRequestQueryParams } from "@/app/api/v2/prompts/get";
 import { useInfinitePrompts } from "@/lib/react-query/use-infinite-prompts";
 import { errorMessage } from "@/utils/error-message";
 import { InfiniteData, useQueryClient } from "@tanstack/react-query";
@@ -17,61 +16,16 @@ import { LucideLoader2 } from "lucide-react";
 
 export function Results() {
   const { getPrompts } = usePromptAPI();
-  const { filters, fixedFilters } = usePromptSearchFiltersContext();
-  const { search } = useComponentContext();
+  const { filters } = usePromptSearchFiltersContext();
+  const { convertFiltersToApiParams } = useComponentContext();
   const debouncedFilters = useDebounce(filters, 500);
   const queryClient = useQueryClient();
   const queryParams = useMemo(
-    () =>
-      ({
-        promptSetId:
-          fixedFilters?.promptSetId ??
-          debouncedFilters.promptSetId?.value?.value?.toString(),
-        type: debouncedFilters.type.value?.map((type) => type.value),
-
-        // All the searches are done for ID and the content so if there is
-        // a search param is given, we set the searchId param to the same value
-        searchId: search !== "" ? search : undefined,
-        search: search !== "" ? search : undefined,
-
-        tags: debouncedFilters.tags?.value,
-        uploaderId: debouncedFilters.uploaderId?.value,
-        status: debouncedFilters.status?.value || undefined,
-
-        excludeReviewed: debouncedFilters.excludeReviewed?.value
-          ? "true"
-          : undefined,
-        onlyReviewed: debouncedFilters.onlyReviewed?.value ? "true" : undefined,
-
-        reviewedByUserId: debouncedFilters.reviewedByUserId?.value,
-        minScoreCount: debouncedFilters.minScoreCount?.value,
-        maxScoreCount: debouncedFilters.maxScoreCount?.value,
-        minBadScoreCount: debouncedFilters.minBadScoreCount?.value,
-        maxBadScoreCount: debouncedFilters.maxBadScoreCount?.value,
-        badScoreThreshold: debouncedFilters.badScoreThreshold?.value,
-        minGoodScoreCount: debouncedFilters.minGoodScoreCount?.value,
-        maxGoodScoreCount: debouncedFilters.maxGoodScoreCount?.value,
-        goodScoreThreshold: debouncedFilters.goodScoreThreshold?.value,
-        minReviewsCount: debouncedFilters.minReviewsCount?.value,
-        maxReviewsCount: debouncedFilters.maxReviewsCount?.value,
-        minPositiveReviewsCount:
-          debouncedFilters.minPositiveReviewsCount?.value,
-        maxPositiveReviewsCount:
-          debouncedFilters.maxPositiveReviewsCount?.value,
-        minNegativeReviewsCount:
-          debouncedFilters.minNegativeReviewsCount?.value,
-        maxNegativeReviewsCount:
-          debouncedFilters.maxNegativeReviewsCount?.value,
-        maxAvgScore: debouncedFilters.maxAvgScore?.value,
-        minAvgScore: debouncedFilters.minAvgScore?.value,
-        modelSlugs: debouncedFilters.modelSlugs?.value || undefined,
-
-        // We are using this casting because the server side schema expects
-        // most of the fields as numbers. Despite of these string values will be
-        // converted to numbers on the server side, for the sake of having type
-        // safety on the client side, we cast the params object to the expected schema.
-      }) as unknown as GetPromptsRequestQueryParams,
-    [debouncedFilters, search, fixedFilters]
+    () => ({
+      ...convertFiltersToApiParams(debouncedFilters),
+      orderBy: ["createdAt_desc"],
+    }),
+    [convertFiltersToApiParams, debouncedFilters]
   );
 
   const {

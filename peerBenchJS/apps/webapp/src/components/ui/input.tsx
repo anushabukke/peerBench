@@ -7,9 +7,19 @@ export type InputProps = React.InputHTMLAttributes<HTMLInputElement> & {
 };
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, inputClassName, ...props }, ref) => {
+  ({ className, type, inputClassName, min, ...props }, ref) => {
     const [showPassword, setShowPassword] = React.useState(false);
     const isPassword = type === "password";
+
+    // Disable scroll wheel on number inputs
+    const handleWheel = (e: React.WheelEvent<HTMLInputElement>) => {
+      if (type === "number") {
+        e.currentTarget.blur();
+      }
+    };
+
+    // For number inputs without explicit min prop, default to 0 to prevent negatives
+    const minValue = type === "number" && min === undefined ? 0 : min;
 
     return (
       <div className={cn("relative w-full", className)}>
@@ -23,6 +33,8 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             inputClassName
           )}
           ref={ref}
+          min={minValue}
+          onWheel={handleWheel}
           {...props}
         />
         {isPassword && (

@@ -1,8 +1,6 @@
 import { MaybePromise, Prompt, PromptType } from "@/types";
 import { z } from "zod";
-import { v7 as uuidv7 } from "uuid";
-import { calculateCID } from "@/utils/cid";
-import { calculateSHA256 } from "@/utils/sha256";
+import { buildPrompt as buildPromptUtil } from "@/utils/builder";
 
 /**
  * Abstract prompt generator class
@@ -94,54 +92,32 @@ export abstract class AbstractGenerator {
      */
     scorers?: string[];
   }): Promise<Prompt> {
-    const questionCID = await calculateCID(params.question).then((cid) =>
-      cid.toString()
-    );
-    const questionSHA256 = await calculateSHA256(params.question);
+    // If the Prompt is a Multiple Choice, the answer data should be
+    // the value of the correct answer key
+    const answer =
+      params.options === undefined || Object.keys(params.options).length === 0
+        ? params.correctAnswer
+        : params.options[params.correctAnswer]; // If the options is provided then the correctAnswer points to the letter of the correct answer
 
-    const fullPromptCID = await calculateCID(params.fullPrompt).then((cid) =>
-      cid.toString()
-    );
-    const fullPromptSHA256 = await calculateSHA256(params.fullPrompt);
+    // Answer key is only valid when the options are provided
+    // which means the Prompt is a multiple choice question
+    const answerKey =
+      params.options === undefined || Object.keys(params.options).length === 0
+        ? ""
+        : params.correctAnswer;
 
-    return {
-      did: uuidv7(),
-      question: {
-        data: params.question,
-        cid: questionCID,
-        sha256: questionSHA256,
-      },
-
-      // If the Prompt is a Multiple Choice, the answer data should be
-      // the value of the correct answer key
-      answer:
-        params.options === undefined || Object.keys(params.options).length === 0
-          ? params.correctAnswer
-          : params.options[params.correctAnswer], // If the options is provided then the correctAnswer points to the letter of the correct answer
-
-      // Answer key is only valid when the options are provided
-      // which means the Prompt is a multiple choice question
-      answerKey:
-        params.options === undefined || Object.keys(params.options).length === 0
-          ? ""
-          : params.correctAnswer,
-
-      options: params.options ?? {},
-
-      fullPrompt: {
-        data: params.fullPrompt,
-        cid: fullPromptCID,
-        sha256: fullPromptSHA256,
-      },
-
+    return buildPromptUtil({
+      prompt: params.question,
+      fullPrompt: params.fullPrompt,
+      options: params.options,
+      answer,
+      answerKey,
       type: params.type,
-
       metadata: {
         generatorIdentifier: this.identifier,
         ...(params.metadata || {}),
       },
-
-      scorers: params.scorers ?? [],
-    };
+      scorers: params.scorers,
+    });
   }
 }

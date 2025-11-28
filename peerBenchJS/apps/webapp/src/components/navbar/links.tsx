@@ -10,6 +10,7 @@ import {
   LucideMessageSquareText,
   LucideExternalLink,
 } from "lucide-react";
+import { SiDiscord, SiGithub } from "@icons-pack/react-simple-icons";
 
 export const links = [
   {
@@ -86,6 +87,20 @@ export const links = [
     ),
     iconSuffix: <LucideExternalLink size={14} className="opacity-60" />,
     external: true,
+  },
+  {
+    label: "",
+    href: "https://discord.gg/kMa6vqHXZH",
+    icon: <SiDiscord size={16} />,
+    external: true,
+    iconOnly: true,
+  },
+  {
+    label: "",
+    href: "https://github.com/peerbench/peerBench",
+    icon: <SiGithub size={16} />,
+    external: true,
+    iconOnly: true,
   },
 ];
 

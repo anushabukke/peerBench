@@ -1,4 +1,4 @@
-import { Prompt } from "@peerbench/sdk";
+import { Prompt } from "peerbench";
 
 interface MultipleChoiceProps {
   prompt: Prompt;
@@ -12,7 +12,7 @@ export default function MultipleChoice({
   return (
     <>
       <p className="font-medium text-gray-800 dark:text-gray-200">
-        {prompt.question.data}
+        {prompt.prompt}
       </p>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {Object.entries(prompt.options || {}).map(([key, value]) => (

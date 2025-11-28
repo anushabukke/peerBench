@@ -83,10 +83,10 @@ export function DesktopNavigation({
                     href={link.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex flex-row items-center gap-2"
+                    className={(link as any).iconOnly ? "flex items-center" : "flex flex-row items-center gap-2"}
                   >
                     {link.icon}
-                    {link.label}
+                    {!(link as any).iconOnly && link.label}
                     {(link as any).iconSuffix}
                   </a>
                 </NavigationMenuLink>

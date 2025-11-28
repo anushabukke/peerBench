@@ -24,19 +24,21 @@ import {
   LucideHash,
   RotateCcw,
   LucideCpu,
+  LucideTimer,
 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useContext } from "react";
 import { cn } from "@/utils/cn";
+import SelectFilter from "./components/select-filter";
 
 export interface PromptSearchFiltersProps {
   className?: string;
-  isUserLoggedIn?: boolean;
+  clearAllButton?: boolean;
   fixedFilters?: PromptSearchFiltersContextProviderProps["fixedFilters"];
   onFiltersChange?: PromptSearchFiltersContextProviderProps["onFiltersChange"];
 }
 
-function Comp({ isUserLoggedIn, className }: PromptSearchFiltersProps) {
+function Comp({ className, clearAllButton = true }: PromptSearchFiltersProps) {
   const ctx = usePromptSearchFiltersContext();
 
   return (
@@ -65,16 +67,48 @@ function Comp({ isUserLoggedIn, className }: PromptSearchFiltersProps) {
         label="Reviewed By User ID"
         icon={<LucideUser size={14} />}
         validate={uuidValidation}
-        placeholder={
-          isUserLoggedIn
-            ? "Enter user ID..."
-            : "Please log in to use this filter"
-        }
+        placeholder="Enter user ID..."
         className="col-span-2"
-        disabled={!isUserLoggedIn}
       />
-
-      <ReviewStatusFilter className="col-span-3" disabled={!isUserLoggedIn} />
+      <SelectFilter
+        label="Max Prompt Age (days)"
+        filterName="maxPromptAgeDays"
+        className="col-span-2"
+        options={[
+          {
+            value: "30",
+            label: "30 days",
+          },
+          {
+            value: "90",
+            label: "90 days",
+          },
+          {
+            value: "180",
+            label: "180 days",
+          },
+          {
+            value: "365",
+            label: "1 year",
+          },
+        ]}
+      />
+      <StringFilter
+        filterName="maxGapToFirstResponse"
+        label="Max Gap to First Response (seconds)"
+        validate={positiveNumberValidation}
+        icon={<LucideTimer size={14} />}
+        placeholder="Any"
+        className="col-span-2"
+        tooltip={
+          <>
+            Maximum gap in seconds between the registration <br />
+            of the Prompt and the first Response that was collected
+          </>
+        }
+      />
+      <div className="col-span-2" />
+      <ReviewStatusFilter className="col-span-3" />
       <AverageScoreFilter className="col-span-3" />
 
       <div className="flex flex-col gap-3 col-span-6">
@@ -255,7 +289,7 @@ function Comp({ isUserLoggedIn, className }: PromptSearchFiltersProps) {
           step={1}
         />
       </div>
-      {ctx.isAnyFilterApplied && (
+      {ctx.isAnyFilterApplied && clearAllButton && (
         <div className="flex col-span-6 justify-end">
           <Button variant="outline" size="sm" onClick={ctx.clearFilters}>
             <RotateCcw className="w-3 h-3" />

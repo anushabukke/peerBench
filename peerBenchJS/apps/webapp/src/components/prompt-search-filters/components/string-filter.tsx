@@ -4,10 +4,15 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "motion/react";
-import { LucideX } from "lucide-react";
+import { Info, LucideX } from "lucide-react";
 import { Filters, usePromptSearchFiltersContext } from "../context";
 import { cn } from "@/utils/cn";
 import { ReactNode } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export type StringFilterProps<Key extends keyof Filters> = {
   filterName: Key;
@@ -21,6 +26,7 @@ export type StringFilterProps<Key extends keyof Filters> = {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  tooltip?: ReactNode;
 };
 
 export default function StringFilter<Key extends keyof Filters>({
@@ -35,6 +41,7 @@ export default function StringFilter<Key extends keyof Filters>({
   min,
   max,
   className,
+  tooltip,
 }: StringFilterProps<Key>) {
   const ctx = usePromptSearchFiltersContext();
   const [error, setError] = useState<string | null>(null);
@@ -82,11 +89,6 @@ export default function StringFilter<Key extends keyof Filters>({
 
   // Update the local state if the filter value changes
   useEffect(() => {
-    if (!filter.value) {
-      setValue(String(filter.value));
-      return;
-    }
-
     // Don't accept invalid values and also revert
     // that value to the default on the context level.
     if (!validate(filter.value)) {
@@ -99,6 +101,8 @@ export default function StringFilter<Key extends keyof Filters>({
       return;
     }
 
+    setValue(String(filter.value));
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filter.value]);
 
@@ -108,6 +112,16 @@ export default function StringFilter<Key extends keyof Filters>({
         <label className="flex items-center gap-2 text-xs font-medium text-gray-400">
           {icon}
           {label}
+          {tooltip && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="w-4 h-4 ml-1 opacity-60 cursor-help text-gray-800" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{tooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
         </label>
         {!disabled && value && (
           <Button

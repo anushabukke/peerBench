@@ -2,17 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { runSimulation } from "@/sim/server";
 import type { SimulationConfig } from "@/sim/types";
 import { createHandler } from "@/lib/route-kit";
-import { smoothAuth } from "@/lib/route-kit/middlewares/smooth-auth";
 import { ApiError } from "@/errors/api-error";
+import { authAdmin } from "@/lib/route-kit/middlewares/auth-admin";
 
 export const POST = createHandler()
-  .use(smoothAuth)
-  .handle(async (req: NextRequest, ctx) => {
-    // TODO: Add proper admin authorization check
-    if (!ctx.userId) {
-      throw ApiError.unauthorized("Authentication required");
-    }
-
+  .use(authAdmin)
+  .handle(async (req: NextRequest) => {
     const body = await req.json();
     const config = body.config as SimulationConfig;
 

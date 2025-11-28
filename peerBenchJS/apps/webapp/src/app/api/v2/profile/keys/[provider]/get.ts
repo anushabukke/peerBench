@@ -25,6 +25,15 @@ export const GET = createHandler()
       });
     }
 
+    if (ctx.provider === ApiKeyProviders.peerbench) {
+      // List all PeerBench API keys for the user
+      const apiKeys = await ApiKeyService.listPeerBenchApiKeys(ctx.userId);
+
+      return NextResponse.json({
+        keys: apiKeys,
+      });
+    }
+
     throw ApiError.notFound();
   });
 

@@ -1,4 +1,4 @@
-import { BaseLLMProvider, MaybePromise } from "@peerbench/sdk";
+import { BaseLLMProvider, MaybePromise } from "peerbench";
 import { logger } from "./logger";
 
 export async function addProvider(

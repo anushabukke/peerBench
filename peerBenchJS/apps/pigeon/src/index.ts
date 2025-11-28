@@ -16,7 +16,7 @@ import {
   sleep,
   ModelInfo,
   BaseLLMProvider,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { createHash } from "crypto";
 import { writeFileSync, existsSync, mkdirSync, statSync } from "fs";
 import { join } from "path";

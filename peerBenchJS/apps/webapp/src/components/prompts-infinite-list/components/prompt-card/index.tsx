@@ -26,7 +26,7 @@ import { usePromptSetAPI } from "@/lib/hooks/use-prompt-set-api";
 import { useComponentContext } from "../../context";
 import { toast } from "react-toastify";
 import { errorMessage } from "@/utils/error-message";
-import { MaybePromise } from "@peerbench/sdk";
+import { MaybePromise } from "peerbench";
 import { usePromptSearchFiltersContext } from "@/components/prompt-search-filters/context";
 import IncludedByPromptSetLink from "@/components/included-by-prompt-set-link";
 

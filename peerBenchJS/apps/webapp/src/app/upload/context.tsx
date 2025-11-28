@@ -14,7 +14,7 @@ import {
   PromptResponse,
   PromptScore,
   stableStringify,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
@@ -251,7 +251,7 @@ export function PageContextProvider({ children }: { children: ReactNode }) {
                         }
 
                         const prompt = prompts.find(
-                          (p) => p.did === s.prompt?.did
+                          (p) => p.promptUUID === s.prompt?.promptUUID
                         );
                         if (!prompt) {
                           throw new Error(

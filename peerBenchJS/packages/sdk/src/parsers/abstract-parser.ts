@@ -3,7 +3,7 @@ import { MaybePromise, Prompt, PromptResponse, PromptScore } from "@/types";
 export abstract class AbstractParser {
   /**
    * String identifier of the parser. Must be
-   * set to distunguish the parser from the others.
+   * set to distinguish the parser from the others.
    */
   static readonly identifier: string = "";
 

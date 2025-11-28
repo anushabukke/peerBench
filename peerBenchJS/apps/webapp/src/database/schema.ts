@@ -1,5 +1,5 @@
 import { ReviewOpinion } from "@/types/review";
-import { PromptOptions, PromptType, ScoringMethod } from "@peerbench/sdk";
+import { PromptOptions, PromptType, ScoringMethod } from "peerbench";
 import {
   pgTable,
   text,
@@ -32,7 +32,8 @@ import {
   UserRoleOnPromptSet,
   ApiKeyProvider,
 } from "./types";
-import { aliasedTable, and, eq, ne, or, sql } from "drizzle-orm";
+import { aliasedTable, and, eq, isNotNull, ne, or, sql } from "drizzle-orm";
+import { jsonbAgg, jsonbBuildObject } from "./helpers";
 
 /**************************************************
  * Tables                                         *
@@ -60,6 +61,7 @@ export const promptSetsTable = pgTable("prompt_sets", {
     .default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  metadata: jsonb().$type<Record<string, any>>().default({}),
   deletedAt: timestamp("deleted_at"),
 });
 export type DbPromptSet = typeof promptSetsTable.$inferSelect;
@@ -104,9 +106,9 @@ export const promptsTable = pgTable("prompts", {
 
   scorers: jsonb().$type<string[]>(),
 
-  // TODO: Later make these columns not null - mdk
-  hashSha256Registration: text("hash_sha256_registration"),
-  hashCIDRegistration: text("hash_cid_registration"),
+  hashSha256Registration: text("hash_sha256_registration").notNull(),
+  hashCIDRegistration: text("hash_cid_registration").notNull(),
+  uploaderId: uuid("uploader_id").notNull(),
 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -318,6 +320,7 @@ export const scoresTable = pgTable("scores", {
 
   hashSha256Registration: text("hash_sha256_registration").notNull(),
   hashCIDRegistration: text("hash_cid_registration").notNull(),
+  uploaderId: uuid("uploader_id").notNull(),
 
   // Columns for faster lookups without joining hash registrations
   promptId: uuid("prompt_id"),
@@ -375,6 +378,7 @@ export const responsesTable = pgTable("responses", {
 
   hashSha256Registration: text("hash_sha256_registration").notNull(),
   hashCIDRegistration: text("hash_cid_registration").notNull(),
+  uploaderId: uuid("uploader_id").notNull(),
 
   promptId: uuid("prompt_id")
     .references(() => promptsTable.id, {
@@ -1007,6 +1011,93 @@ export type DbAPIKey = typeof apiKeysTable.$inferSelect;
 export type DbAPIKeyInsert = typeof apiKeysTable.$inferInsert;
 
 /**************************************************
+ * System Prompts Registry Tables                 *
+ **************************************************/
+
+export const systemPromptsTable = pgTable("system_prompts", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  name: text().notNull().unique(),
+  tags: jsonb().$type<string[]>().default([]).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type DbSystemPrompt = typeof systemPromptsTable.$inferSelect;
+export type DbSystemPromptInsert = typeof systemPromptsTable.$inferInsert;
+
+export const systemPromptVersionsTable = pgTable(
+  "system_prompt_versions",
+  {
+    id: integer().primaryKey().generatedByDefaultAsIdentity(),
+    promptId: integer("prompt_id")
+      .references(() => systemPromptsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    version: integer().notNull(),
+    type: varchar({ length: 10 }).$type<"text" | "chat">().notNull(),
+
+    // For 'text' type: string, For 'chat' type: array of {role, content}
+    prompt: jsonb()
+      .notNull()
+      .$type<string | Array<{ role: string; content: string }>>(),
+
+    // Optional model configuration (temperature, model name, etc.)
+    config: jsonb().$type<Record<string, any>>(),
+
+    // SHA256 hash for content-addressable retrieval
+    sha256Hash: text("sha256_hash").notNull().unique(),
+
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Ensure version numbers are unique per prompt
+    unique("unique_prompt_version").on(table.promptId, table.version),
+    // Index on sha256_hash for fast hash-based lookups
+    index("idx_system_prompt_versions_sha256").on(table.sha256Hash),
+  ]
+);
+export type DbSystemPromptVersion =
+  typeof systemPromptVersionsTable.$inferSelect;
+export type DbSystemPromptVersionInsert =
+  typeof systemPromptVersionsTable.$inferInsert;
+
+export const systemPromptLabelsTable = pgTable(
+  "system_prompt_labels",
+  {
+    id: integer().primaryKey().generatedByDefaultAsIdentity(),
+    promptId: integer("prompt_id")
+      .references(() => systemPromptsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      })
+      .notNull(),
+    version: integer().notNull(),
+
+    // Supported labels: 'latest', 'production', 'development', 'local'
+    label: varchar({ length: 20 }).notNull(),
+
+    assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Only one version can have a specific label per prompt
+    unique("unique_prompt_label").on(table.promptId, table.label),
+
+    // Foreign key to ensure version exists
+    foreignKey({
+      columns: [table.promptId, table.version],
+      foreignColumns: [
+        systemPromptVersionsTable.promptId,
+        systemPromptVersionsTable.version,
+      ],
+    }),
+  ]
+);
+export type DbSystemPromptLabel = typeof systemPromptLabelsTable.$inferSelect;
+export type DbSystemPromptLabelInsert =
+  typeof systemPromptLabelsTable.$inferInsert;
+
+/**************************************************
  * Views                                          *
  **************************************************/
 export const leaderboardView = pgView("v_leaderboard").as((qb) => {
@@ -1218,6 +1309,12 @@ export const userStatsView = pgView("v_user_stats").as((qb) => {
         `
           .mapWith(Number)
           .as("generated_prompt_count"),
+        verifiedPromptCount: sql<number>`
+          COUNT(DISTINCT ${promptsTable.id})
+          FILTER (WHERE ${promptSetPrompts.status} = 'included')
+        `
+          .mapWith(Number)
+          .as("verified_prompt_count"),
       })
       .from(promptsTable)
       .innerJoin(
@@ -1226,6 +1323,10 @@ export const userStatsView = pgView("v_user_stats").as((qb) => {
           eq(hashRegistrationsTable.cid, promptsTable.hashCIDRegistration),
           eq(hashRegistrationsTable.sha256, promptsTable.hashSha256Registration)
         )
+      )
+      .leftJoin(
+        promptSetPrompts,
+        eq(promptSetPrompts.promptId, promptsTable.id)
       )
       .groupBy(hashRegistrationsTable.uploaderId)
   );
@@ -1344,6 +1445,7 @@ export const userStatsView = pgView("v_user_stats").as((qb) => {
           .as("co_created_prompt_set_count"),
       uploadedPromptCount: contributedPromptsSubQuery.uploadedPromptCount,
       generatedPromptCount: contributedPromptsSubQuery.generatedPromptCount,
+      verifiedPromptCount: contributedPromptsSubQuery.verifiedPromptCount,
       avgPromptQuickFeedbackConsensus:
         avgPromptQuickFeedbackConsensusSubQuery.avgConsensus,
       avgScoreCreatedPromptSets: avgScoreCreatedPromptSetsSubQuery.avgScore,
@@ -1383,8 +1485,131 @@ export const userStatsView = pgView("v_user_stats").as((qb) => {
       promptQuickFeedbacksSubQuery.promptSetQuickFeedbackCount,
       contributedPromptsSubQuery.uploadedPromptCount,
       contributedPromptsSubQuery.generatedPromptCount,
+      contributedPromptsSubQuery.verifiedPromptCount,
       avgPromptQuickFeedbackConsensusSubQuery.avgConsensus,
       avgScoreCreatedPromptSetsSubQuery.avgScore,
       avgScoreCoAuthoredPromptSetsSubQuery.avgScore
     );
 });
+
+export type DbViewQuickFeedbackFlag = {
+  id: number;
+  flag: string;
+  opinion: QuickFeedbackOpinion | null;
+};
+export const quickFeedbacksView = pgView("v_quick_feedbacks").as((qb) => {
+  const flagsAggregation = jsonbAgg(
+    jsonbBuildObject({
+      id: quickFeedbackFlagsTable.id,
+      flag: quickFeedbackFlagsTable.flag,
+      opinion: quickFeedbackFlagsTable.opinion,
+    }),
+    {
+      filterWhere: isNotNull(quickFeedbackFlagsTable.flag),
+      fallbackEmptyArray: true,
+    }
+  );
+
+  return qb
+    .select({
+      id: quickFeedbacksTable.id,
+      createdAt: quickFeedbacksTable.createdAt,
+      promptId: quickFeedbacksTable.promptId,
+      responseId: quickFeedbacksTable.responseId,
+      scoreId: quickFeedbacksTable.scoreId,
+      opinion: quickFeedbacksTable.opinion,
+      userId: quickFeedbacksTable.userId,
+      flags: flagsAggregation.as("flags"),
+    })
+    .from(quickFeedbacksTable)
+    .leftJoin(
+      quickFeedbacks_quickFeedbackFlagsTable,
+      eq(
+        quickFeedbacks_quickFeedbackFlagsTable.quickFeedbackId,
+        quickFeedbacksTable.id
+      )
+    )
+    .leftJoin(
+      quickFeedbackFlagsTable,
+      eq(
+        quickFeedbackFlagsTable.id,
+        quickFeedbacks_quickFeedbackFlagsTable.flagId
+      )
+    )
+    .groupBy(quickFeedbacksTable.id, quickFeedbacksTable.userId);
+});
+
+// export const modelScoreStatsPerPromptView = pgView(
+//   "v_model_score_stats_per_prompt"
+// ).as((qb) => {
+//   return qb
+//     .select({
+//       promptId: responsesTable.promptId,
+//       modelId: sql<string>`${providerModelsTable.modelId}`.as("model_id"),
+//       scoreCount: count(scoresTable.id).as("score_count"),
+//       goodScoreCount: sql<number>`
+//       SUM(1) FILTER (WHERE ${scoresTable.score} >= ${goodScoreThreshold})
+//     `
+//         .mapWith(Number)
+//         .as("good_score_count"),
+//       badScoreCount: sql<number>`
+//       SUM(1) FILTER (WHERE ${scoresTable.score} <= ${badScoreThreshold})
+//     `
+//         .mapWith(Number)
+//         .as("bad_score_count"),
+//       avgScore: sql<number>`AVG(${scoresTable.score})`
+//         .mapWith(Number)
+//         .as("avg_score"),
+//       totalScore: sql<number>`SUM(${scoresTable.score})`
+//         .mapWith(Number)
+//         .as("total_score"),
+//     })
+//     .from(responsesTable)
+//     .leftJoin(scoresTable, eq(responsesTable.id, scoresTable.responseId))
+//     .leftJoin(
+//       providerModelsTable,
+//       eq(responsesTable.modelId, providerModelsTable.id)
+//     )
+//     .groupBy(responsesTable.promptId, providerModelsTable.modelId);
+// });
+
+// export const promptsWithStatsView = pgView("v_prompts_with_stats").as((qb) => {
+//   return qb
+//     .select({
+//       id: promptsTable.id,
+//       type: promptsTable.type,
+
+//       question: promptsTable.question,
+//       cid: promptsTable.cid,
+//       sha256: promptsTable.sha256,
+
+//       options: promptsTable.options,
+//       answerKey: promptsTable.answerKey,
+//       answer: promptsTable.answer,
+
+//       fullPrompt: promptsTable.fullPrompt,
+//       fullPromptCID: promptsTable.fullPromptCID,
+//       fullPromptSHA256: promptsTable.fullPromptSHA256,
+
+//       metadata: promptsTable.metadata,
+//       createdAt: promptsTable.createdAt,
+
+//       positiveQuickFeedbacks: sql<number>`
+//         COUNT(DISTINCT ${quickFeedbacksView.id})
+//         FILTER (WHERE ${eq(quickFeedbacksView.opinion, QuickFeedbackOpinions.positive)})
+//       `
+//         .mapWith(Number)
+//         .as("positive_quick_feedbacks"),
+//       negativeQuickFeedbacks: sql<number>`
+//         COUNT(DISTINCT ${quickFeedbacksView.id})
+//         FILTER (WHERE ${eq(quickFeedbacksView.opinion, QuickFeedbackOpinions.negative)})
+//       `
+//         .mapWith(Number)
+//         .as("negative_quick_feedbacks"),
+//     })
+//     .from(promptsTable)
+//     .leftJoin(
+//       quickFeedbacksView,
+//       eq(quickFeedbacksView.promptId, promptsTable.id)
+//     );
+// });

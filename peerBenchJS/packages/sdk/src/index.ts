@@ -30,3 +30,6 @@ export * from "./validation";
 
 // Constants
 export * from "./constants";
+
+// Prompt Registry
+export * from "./prompt-registry";

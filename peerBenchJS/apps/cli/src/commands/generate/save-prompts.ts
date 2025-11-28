@@ -1,4 +1,4 @@
-import { Prompt } from "@peerbench/sdk";
+import { Prompt } from "peerbench";
 import path from "path";
 import fs from "fs/promises";
 import { dateString } from "@/utils/date-string";

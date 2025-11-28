@@ -83,7 +83,7 @@ Your judgement must be in the format and criteria specified below:
         parsedOptions.prompt +
         parsedOptions.promptSuffix,
       {
-        question: response.prompt.question.data,
+        question: response.prompt.prompt,
         response: response.data!,
         correctAnswer: response.prompt.answer!,
         correctAnswerKey:

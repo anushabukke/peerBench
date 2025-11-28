@@ -1,4 +1,4 @@
-import { OpenRouterProvider } from "@peerbench/sdk";
+import { OpenRouterProvider } from "peerbench";
 import { env } from "./environment";
 import { EnvVariableNeededError } from "./errors/env";
 

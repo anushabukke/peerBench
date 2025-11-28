@@ -15,7 +15,7 @@ import {
   PromptScoreSchema,
   readableTime,
   readFile,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { statSync } from "fs";
 
 program

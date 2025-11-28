@@ -1,0 +1,1 @@
+ALTER TABLE "prompt_sets" ADD COLUMN "metadata" jsonb DEFAULT '{}'::jsonb;

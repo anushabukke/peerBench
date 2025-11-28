@@ -18,6 +18,7 @@ import {
   LucideInfo,
   LucideHash,
   LucideMessageSquare,
+  LucideThumbsUp,
 } from "lucide-react";
 import {
   SiX,
@@ -34,6 +35,7 @@ import {
 } from "@/components/ui/tooltip";
 import { CopyButton } from "@/components/copy-button";
 import { OrgAffiliationCard } from "./org-affiliation-card";
+import { Button } from "@/components/ui/button";
 
 export interface ProfileProps {
   publicProfile?: boolean;
@@ -49,6 +51,10 @@ export default async function Profile({ userId, publicProfile }: ProfileProps) {
   if (!profile) {
     throw new Error("Profile information not found. Please try again later.");
   }
+
+  // Get count of prompts with 3+ positive feedbacks
+  const promptsWithThreePlusFeedbacks =
+    await ProfileService.getPromptsWithThreePlusFeedbacks({ userId });
 
   // Lookup organization by email
   let organization = null;
@@ -153,6 +159,23 @@ export default async function Profile({ userId, publicProfile }: ProfileProps) {
       bgColor: "bg-indigo-100",
       tooltip: "Total Prompt count that user had uploaded",
     });
+
+    // Add verification percentage if there are uploaded prompts
+    const verificationPercentage =
+      profile.stats!.uploadedPromptCount > 0
+        ? Math.round(
+            (promptsWithThreePlusFeedbacks / profile.stats!.uploadedPromptCount) * 100
+          )
+        : 0;
+
+    contributionActivity.push({
+      title: "% Prompts Verified",
+      value: `${verificationPercentage}%`,
+      icon: LucideCheckCircle,
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-100",
+      tooltip: "Percentage of uploaded prompts with 3+ positive feedbacks",
+    });
   }
 
   if (profile.stats!.generatedPromptCount) {
@@ -164,6 +187,18 @@ export default async function Profile({ userId, publicProfile }: ProfileProps) {
       bgColor: "bg-pink-100",
       tooltip:
         'Total Prompt count that user had generated using "Create Prompt" tool',
+    });
+  }
+
+  if (profile.stats!.verifiedPromptCount) {
+    contributionActivity.push({
+      title: "Prompts Verified",
+      value: profile.stats!.verifiedPromptCount,
+      icon: LucideCheckCircle,
+      color: "text-teal-600",
+      bgColor: "bg-teal-100",
+      tooltip:
+        "Total Prompt count that have been verified (status = 'included')",
     });
   }
 
@@ -206,6 +241,34 @@ export default async function Profile({ userId, publicProfile }: ProfileProps) {
 
   return (
     <>
+      {/* Review Link Banner */}
+      {profile.stats!.uploadedPromptCount && profile.stats!.uploadedPromptCount > 0 && (
+        <div className="mb-6">
+          <Card className="shadow-sm border-blue-200 bg-blue-50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <LucideThumbsUp className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-blue-900">
+                      Get Your Prompts Reviewed
+                    </h3>
+                    <p className="text-xs text-blue-700">
+                      Share this link with friends to get feedback on your prompts
+                    </p>
+                  </div>
+                </div>
+                <Link href={`/prompts/review?uploaderId=${userId}`}>
+                  <Button variant="outline" size="sm" className="bg-white hover:bg-blue-100">
+                    Review My Prompts
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Header Section */}
       <div className="mb-8">
         <Card className="shadow-sm">

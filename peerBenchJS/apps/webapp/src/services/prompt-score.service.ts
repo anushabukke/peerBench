@@ -33,7 +33,7 @@ import {
   PromptScore,
   removeDIDPrefix,
   ScoringMethods,
-} from "@peerbench/sdk";
+} from "peerbench";
 import {
   and,
   count,
@@ -229,7 +229,7 @@ export class PromptScoreService {
           score: promptScore.score,
           scoringMethod: promptScore.method,
           promptId: promptScore.prompt // Only add relation if the Prompt info is presented in the Score object
-            ? removeDIDPrefix(promptScore.prompt.did)
+            ? removeDIDPrefix(promptScore.prompt.promptUUID)
             : undefined,
           responseId: removeDIDPrefix(promptScore.did),
           scorerUserId: promptScore.scorerUserId ?? data.uploaderId,
@@ -246,6 +246,7 @@ export class PromptScoreService {
 
           hashCIDRegistration: cid,
           hashSha256Registration: sha256,
+          uploaderId: data.uploaderId,
 
           inputTokensUsed: promptScore.scorerAI?.inputTokensUsed,
           outputTokensUsed: promptScore.scorerAI?.outputTokensUsed,

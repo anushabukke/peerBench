@@ -2,7 +2,7 @@
 
 import { useInfinitePromptSets } from "@/lib/react-query/use-infinite-prompt-sets";
 import { useInfinitePrompts } from "@/lib/react-query/use-infinite-prompts";
-import { useModelList } from "@/lib/react-query/use-model-list";
+import { useProfile } from "@/lib/react-query/use-profile";
 import { createContext, ReactNode } from "react";
 
 /**
@@ -22,8 +22,8 @@ export function PreloaderContextProvider({
   // Load Prompt list
   useInfinitePrompts();
 
-  // Model lists for different Providers (we only have one for now)
-  useModelList("openrouter.ai"); // NOTE: Should be the same as the Provider identifier
+  // Load profile
+  useProfile();
 
   return (
     <PreloaderContext.Provider value={{}}>{children}</PreloaderContext.Provider>

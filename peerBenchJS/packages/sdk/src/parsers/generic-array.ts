@@ -10,7 +10,7 @@ import { MaybePromise, Prompt, PromptResponse, PromptScore } from "@/types";
  * and Score objects for the each object from the data that is parsed from the file/content.
  *
  * It also prevents having same Prompts with different IDs using the
- * `fullPrompt` CID calculation of the produced Prompt objects.
+ * `fullPromptCID` of the produced Prompt objects.
  */
 export class GenericArrayParser extends AbstractParser {
   static readonly identifier: string = "generic-array";
@@ -67,8 +67,8 @@ export class GenericArrayParser extends AbstractParser {
 
       if (prompt) {
         // Only add this Prompt object to the result if the `fullPrompt` is not produced before.
-        if (!includedPromptCIDs[prompt.fullPrompt.cid]) {
-          includedPromptCIDs[prompt.fullPrompt.cid] = prompt.did;
+        if (!includedPromptCIDs[prompt.fullPromptCID]) {
+          includedPromptCIDs[prompt.fullPromptCID] = prompt.promptUUID;
           result.prompts.push(prompt);
         }
       }
@@ -79,10 +79,10 @@ export class GenericArrayParser extends AbstractParser {
           // If the Prompt used in the Response object is already produced before,
           // use that object. This prevents having the same Prompt with different properties
           // within the Response objects.
-          if (includedPromptCIDs[response.prompt.fullPrompt.cid]) {
-            const cid = response.prompt.fullPrompt.cid;
+          if (includedPromptCIDs[response.prompt.fullPromptCID]) {
+            const cid = response.prompt.fullPromptCID;
             response.prompt = result.prompts.find(
-              (p) => p.fullPrompt.cid === cid
+              (p) => p.fullPromptCID === cid
             )!;
           }
 
@@ -100,11 +100,9 @@ export class GenericArrayParser extends AbstractParser {
           // Same as Response object. But this time we need to also check if
           // the Score object is including some info about the Prompt
           // since they are allowed to not to include Prompt info at all.
-          if (score.prompt && includedPromptCIDs[score.prompt.fullPrompt.cid]) {
-            const cid = score.prompt.fullPrompt.cid;
-            score.prompt = result.prompts.find(
-              (p) => p.fullPrompt.cid === cid
-            )!;
+          if (score.prompt && includedPromptCIDs[score.prompt.fullPromptCID]) {
+            const cid = score.prompt.fullPromptCID;
+            score.prompt = result.prompts.find((p) => p.fullPromptCID === cid)!;
           }
 
           // Only add this Score object if it is not in the result array yet.

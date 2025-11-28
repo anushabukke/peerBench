@@ -36,7 +36,7 @@ export default function Filters() {
           className="group-data-[state=closed]:hidden p-5 border-t border-t-gray-200"
           forceMount
         >
-          <PromptSearchFilters isUserLoggedIn />
+          <PromptSearchFilters />
         </AccordionContent>
       </AccordionItem>
     </Accordion>

@@ -13,7 +13,7 @@ import TestResultFilters, {
   TestResultFilterValues,
 } from "./test-result-filters";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { formatMs } from "@peerbench/sdk";
+import { formatMs } from "peerbench";
 import { GetTestResultsResult } from "@/services/test-result.service";
 import { type User } from "@supabase/supabase-js";
 

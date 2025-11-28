@@ -9,7 +9,7 @@ import {
   OpenEndedGenerator,
   Prompt,
   PromptTypes,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { toast } from "react-toastify";
 import { isAnyProviderLoading } from "@/lib/helpers/is-any-provider-loading";
 import { Sparkles } from "lucide-react";

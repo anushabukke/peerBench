@@ -17,7 +17,7 @@ import {
   SimilarityScorer,
   TEXT_REPLACEMENT_SYSTEM_PROMPT,
   TYPO_SYSTEM_PROMPT,
-} from "@peerbench/sdk";
+} from "peerbench";
 import { v7 as uuidv7 } from "uuid";
 import { errorMessage } from "@/utils/error-message";
 import { Button } from "@/components/ui/button";
@@ -134,7 +134,7 @@ export default function RunAbortButtons() {
         ctx.promptsToBeTested.map(async (prompt) => {
           const systemPrompt = getSystemPrompt(prompt.type);
 
-          const promptBeginning = prompt.fullPrompt.data.slice(0, 50);
+          const promptBeginning = prompt.fullPrompt.slice(0, 50);
           await Promise.all(
             ctx.selectedModels.map(async (selectedModel) => {
               const provider = ctx.providers[selectedModel.provider]!;
@@ -146,7 +146,7 @@ export default function RunAbortButtons() {
 
               try {
                 const forwardResponse = await provider.implementation!.forward(
-                  prompt.fullPrompt.data,
+                  prompt.fullPrompt,
                   {
                     model: modelId,
                     system: systemPrompt,

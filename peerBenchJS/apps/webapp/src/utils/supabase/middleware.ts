@@ -1,4 +1,4 @@
-import { publicRoutes, redirectRoutes } from "@/routes";
+import { protectedRoutes, publicRoutes, redirectRoutes } from "@/routes";
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { pathToRegexp } from "path-to-regexp";
@@ -64,6 +64,13 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
+    const isProtectedRoute = protectedRoutes.some((route) => {
+      const { regexp } = pathToRegexp(route);
+      const match = request.nextUrl.pathname.match(regexp);
+
+      return match !== null;
+    });
+
     // Check if the current route is public
     const isPublicRoute = publicRoutes.some((route) => {
       const { regexp } = pathToRegexp(route);
@@ -73,7 +80,7 @@ export async function updateSession(request: NextRequest) {
     });
 
     // Redirect to login page if we don't have an authenticated user.
-    if (!isPublicRoute) {
+    if (!isPublicRoute || isProtectedRoute) {
       const url = request.nextUrl.clone();
       const originalUrl = request.nextUrl.pathname + request.nextUrl.search;
       url.pathname = "/login";

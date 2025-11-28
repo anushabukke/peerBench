@@ -14,6 +14,7 @@ export const publicRoutes = [
   "/profile{/*path}",
   "/prompt-sets{/*path}",
   "/prompts{/*path}",
+  "/curated{/*path}",
   "/hashes{/*path}",
   "/compare/share{/*path}", // Allow unauthenticated access to shared comparisons
 ] as const;
@@ -23,6 +24,8 @@ export const protectedRoutes = [
   "/benchmark{/*path}",
   "/dashboard{/*path}",
   "/upload{/*path}",
+  "/prompts/create{/*path}",
+  "/prompts/review{/*path}",
   "/supporting-documents{/*path}",
   "/compare{/*path}",
 ] as const;
