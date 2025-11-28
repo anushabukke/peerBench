@@ -107,9 +107,9 @@ export default function ModelsLeaderboardPage() {
                 {/* Score */}
                 <div className="flex-shrink-0 text-right">
                   <div className="text-2xl font-bold text-blue-600">
-                    {(model.score * 100).toFixed(1)}%
+                    {(model.score * 10000).toFixed(1)}
                   </div>
-                  <div className="text-xs text-gray-500">performance</div>
+                  <div className="text-xs text-gray-500">points</div>
                 </div>
               </div>
             </Card>

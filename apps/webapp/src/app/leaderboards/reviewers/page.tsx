@@ -104,9 +104,9 @@ export default function ReviewersLeaderboardPage() {
                   {/* Trust Score */}
                   <div className="flex-shrink-0 text-right">
                     <div className="text-2xl font-bold text-green-600">
-                      {(reviewer.trustScore * 100).toFixed(1)}%
+                      {(reviewer.trustScore * 100).toFixed(1)}
                     </div>
-                    <div className="text-xs text-gray-500">trust score</div>
+                    <div className="text-xs text-gray-500">trust points</div>
                   </div>
                 </div>
               </Card>
