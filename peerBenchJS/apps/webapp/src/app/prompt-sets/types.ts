@@ -7,8 +7,8 @@ export type SortOption =
 
 export interface Filters {
   sortBy: SortOption;
-  avgMin: string;
-  avgMax: string;
-  promptsMin: string;
-  promptsMax: string;
+  avgMin: number | "";
+  avgMax: number | "";
+  promptsMin: number | "";
+  promptsMax: number | "";
 }

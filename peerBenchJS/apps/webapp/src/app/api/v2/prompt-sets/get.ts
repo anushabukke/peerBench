@@ -48,7 +48,7 @@ export const GET = createHandler()
       filters: {
         ownerId: query.ownerId,
         id: query.id,
-        search: query.search,
+        search: query.search?.trim(),
         avgMin: query.avgMin,
         avgMax: query.avgMax,
         promptsMin: query.promptsMin,

@@ -22,7 +22,7 @@ export default function PromptSetsPage() {
     promptsMax: "",
   });
 
-  const resetFilters = () =>
+  const resetFilterState = () =>
     setFilters({
       sortBy: "",
       avgMin: "",
@@ -31,11 +31,15 @@ export default function PromptSetsPage() {
       promptsMax: "",
     });
 
+  const resetAllFiltersAndSearch = () => {
+    setSearch("");
+    resetFilterState();
+  };
+
   const applyFilters = () => setFiltersOpen(false);
 
- 
   //server-side filtering
- 
+
   const {
     data: promptSets,
     isLoading,
@@ -148,7 +152,7 @@ export default function PromptSetsPage() {
         filters={filters}
         setFilters={setFilters}
         onApply={applyFilters}
-        onReset={resetFilters}
+        onReset={resetAllFiltersAndSearch}
       />
     </div>
   );
