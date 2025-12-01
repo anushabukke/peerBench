@@ -11,4 +11,5 @@ export interface Filters {
   avgMax: number | "";
   promptsMin: number | "";
   promptsMax: number | "";
+  
 }

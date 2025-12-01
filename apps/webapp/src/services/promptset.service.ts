@@ -43,7 +43,7 @@ import {
   PromptStatuses,
   UserRoleOnPromptSet,
 } from "@/database/types";
-import { PgColumn, unionAll } from "drizzle-orm/pg-core";
+import { PgColumn,  unionAll } from "drizzle-orm/pg-core";
 import { ApiError } from "@/errors/api-error";
 import { randomBytes } from "node:crypto";
 import { authUsers } from "drizzle-orm/supabase";
@@ -425,7 +425,6 @@ export class PromptSetService {
           sortBy?: string;
         };
         requestedByUserId?: string;
-
         /**
          * If `requestedByUserId` is provided, then applies more filters based on the given reason.
          * Not used if `requestedByUserId` is not provided.
@@ -434,36 +433,37 @@ export class PromptSetService {
       }
   ) {
     return await withTxOrDb(async (tx) => {
-      const permissions = sql<{
-        canDelete: boolean;
-        canEdit: boolean;
-      }>`
-        jsonb_build_object(
-          'canDelete',
-            ${
-              options?.requestedByUserId === ADMIN_USER_ID // ACL rules doesn't apply to admin user
-                ? sql.raw("true")
-                : eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.owner)
-            },
-          'canEdit', ${
-            options?.requestedByUserId === ADMIN_USER_ID // ACL rules doesn't apply to admin user
-              ? sql.raw("true")
-              : or(
-                  eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.owner),
-                  eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.admin)
-                )
-          }
-        )
-      `.as("permissions");
-
       const contributionsQuery = this.buildContributionsQuery(tx);
-      const averageScore = sql<number>`
-        COALESCE(AVG(${scoresTable.score}), 0)
-      `
-        .mapWith(Number)
-        .as("average_score");
+
+      const averageScore =
+        sql<number>`COALESCE(AVG(${scoresTable.score}), 0)`.mapWith(Number);
+      const totalPromptsCount = sql<number>`
+      COALESCE(
+        COUNT(DISTINCT CASE WHEN ${eq(promptSetPrompts.status, PromptStatuses.included)}
+                            THEN ${promptsTable.id} END), 0
+      )
+    `.mapWith(Number);
+
+      const permissions = sql<{ canDelete: boolean; canEdit: boolean }>`
+      jsonb_build_object(
+        'canDelete', ${
+          options?.requestedByUserId === ADMIN_USER_ID // ACL rules doesn't apply to admin user
+            ? sql.raw("true")
+            : eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.owner)
+        },
+        'canEdit', ${
+          options?.requestedByUserId === ADMIN_USER_ID
+            ? sql.raw("true")
+            : or(
+                eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.owner),
+                eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.admin)
+              )
+        }
+      )
+    `.as("permissions");
 
       let query = tx
+        .with(contributionsQuery)
         .select({
           id: promptSetsTable.id,
           title: promptSetsTable.title,
@@ -478,22 +478,7 @@ export class PromptSetService {
           isPublicSubmissionsAllowed:
             promptSetsTable.isPublicSubmissionsAllowed,
 
-          // TODO: Count excluded Prompts separately
-
-          totalPromptsCount: sql<number>`
-            COALESCE(
-              COUNT(
-                DISTINCT CASE
-                  WHEN ${eq(promptSetPrompts.status, PromptStatuses.included)}
-                  THEN ${promptsTable.id}
-                END
-              ),
-              0
-            )
-          `
-            .mapWith(Number)
-            .as("total_prompts_count"),
-
+          totalPromptsCount,
           totalContributors: countDistinct(contributionsQuery.userId),
           totalScoreCount: countDistinct(scoresTable.id),
           averageScore,
@@ -519,16 +504,10 @@ export class PromptSetService {
         .from(promptSetsTable)
         .leftJoin(
           promptSetPrompts,
-          and(
-            eq(promptSetPrompts.promptSetId, promptSetsTable.id),
-            eq(promptSetPrompts.status, PromptStatuses.included)
-          )
+          eq(promptSetsTable.id, promptSetPrompts.promptSetId)
         )
-        .leftJoin(promptsTable, eq(promptsTable.id, promptSetPrompts.promptId))
-        .leftJoin(
-          promptSetStatsView,
-          eq(promptSetsTable.id, promptSetStatsView.id)
-        )
+        .leftJoin(promptsTable, eq(promptSetPrompts.promptId, promptsTable.id))
+        .leftJoin(scoresTable, eq(scoresTable.promptId, promptsTable.id))
         .leftJoin(
           promptSetTagsTable,
           eq(promptSetsTable.id, promptSetTagsTable.promptSetId)
@@ -539,6 +518,7 @@ export class PromptSetService {
         )
         // TODO: Maybe also add review data as well
         .$dynamic();
+
       let countQuery = tx
         .select({ count: count() })
         .from(promptSetsTable)
@@ -547,6 +527,7 @@ export class PromptSetService {
       const whereConditions: (SQL<unknown> | undefined)[] = [
         isNull(promptSetsTable.deletedAt), // Exclude deleted entries
       ];
+      const havingConditions: SQL<unknown>[] = [];
       const groups: (PgColumn<any> | SQL.Aliased<any>)[] = [promptSetsTable.id];
       let orders: SQL<unknown>[] = [desc(promptSetsTable.updatedAt)];
 
@@ -567,23 +548,38 @@ export class PromptSetService {
           )
         );
       }
-      if (options?.filters?.id !== undefined) {
-        whereConditions.push(eq(promptSetsTable.id, options.filters.id));
-      }
-      if (options?.filters?.title !== undefined) {
-        whereConditions.push(eq(promptSetsTable.title, options.filters.title));
+
+      if (f?.avgMin !== undefined)
+        havingConditions.push(sql`${averageScore} >= ${f.avgMin}`);
+      if (f?.avgMax !== undefined)
+        havingConditions.push(sql`${averageScore} <= ${f.avgMax}`);
+      if (f?.promptsMin !== undefined)
+        havingConditions.push(sql`${totalPromptsCount} >= ${f.promptsMin}`);
+      if (f?.promptsMax !== undefined)
+        havingConditions.push(sql`${totalPromptsCount} <= ${f.promptsMax}`);
+
+      if (f?.sortBy) {
+        const [field, order] = f.sortBy.split("-");
+        if (
+          (field === "createdAt" || field === "updatedAt") &&
+          (order === "asc" || order === "desc")
+        ) {
+          orders = [
+            order === "asc"
+              ? sql`${promptSetsTable[field]} ASC`
+              : sql`${promptSetsTable[field]} DESC`,
+          ];
+        }
       }
 
-      // If the requested user is specified (which means this method is
-      // called from an API handler function) then we need to apply
-      // access control rules to the results.
+      // ---------- ACL ----------
       if (
         options?.requestedByUserId &&
         options.requestedByUserId !== ADMIN_USER_ID
       ) {
         const aclConditions = [];
         // Apply filters based on the request reason to have more relevant results.
-        switch (options?.filters?.accessReason) {
+        switch (options?.accessReason) {
           case PromptSetAccessReasons.submitPrompt:
             aclConditions.push(
               or(
@@ -594,17 +590,11 @@ export class PromptSetService {
                   userRoleOnPromptSetTable.role,
                   UserRoleOnPromptSet.collaborator
                 ),
-
                 // ...or Prompt Set is public and allows public submissions
                 and(
                   eq(promptSetsTable.isPublic, true),
                   eq(promptSetsTable.isPublicSubmissionsAllowed, true)
-                ),
-                inArray(userRoleOnPromptSetTable.role, [
-                  UserRoleOnPromptSet.owner,
-                  UserRoleOnPromptSet.admin,
-                  UserRoleOnPromptSet.collaborator,
-                ])
+                )
               )
             );
             break;
@@ -615,7 +605,6 @@ export class PromptSetService {
                 eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.owner),
                 eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.admin),
                 eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.reviewer),
-
                 // ...or Prompt Set marked as public
                 eq(promptSetsTable.isPublic, true)
               )
@@ -623,11 +612,11 @@ export class PromptSetService {
             break;
           case PromptSetAccessReasons.edit:
             aclConditions.push(
-              inArray(userRoleOnPromptSetTable.role, [
-                UserRoleOnPromptSet.owner,
+              or(
+                eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.owner),
                 // TODO: Should we allow admin to edit the Prompt Set?
-                UserRoleOnPromptSet.admin,
-              ])
+                eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.admin)
+              )
             );
             break;
           // If the reason is not specified, we can retrieve
@@ -635,13 +624,14 @@ export class PromptSetService {
           default:
             aclConditions.push(
               or(
-                eq(promptSetsTable.isPublic, true),
-                inArray(userRoleOnPromptSetTable.role, [
-                  UserRoleOnPromptSet.owner,
-                  UserRoleOnPromptSet.admin,
-                  UserRoleOnPromptSet.collaborator,
-                  UserRoleOnPromptSet.reviewer,
-                ])
+                eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.owner),
+                eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.admin),
+                eq(
+                  userRoleOnPromptSetTable.role,
+                  UserRoleOnPromptSet.collaborator
+                ),
+                eq(userRoleOnPromptSetTable.role, UserRoleOnPromptSet.reviewer),
+                eq(promptSetsTable.isPublic, true)
               )
             );
             break;
@@ -663,7 +653,6 @@ export class PromptSetService {
           userRoleOnPromptSetTable,
           joinCondition
         );
-
         whereConditions.push(and(...aclConditions));
         groups.push(userRoleOnPromptSetTable.role);
 
@@ -683,17 +672,14 @@ export class PromptSetService {
       return await paginateQuery(
         query
           .groupBy(...groups)
+          .having(and(...havingConditions))
           .orderBy(...orders)
           .where(and(...whereConditions)),
         countQuery.where(and(...whereConditions)),
-        {
-          page: options?.page,
-          pageSize: options?.pageSize,
-        }
+        { page: options?.page, pageSize: options?.pageSize }
       );
     }, options?.tx);
   }
-
   /**
    * Returns the recent Prompt Set that the given user has joined.
    * Unlike `getPromptSets` method, this one doesn't provide too many

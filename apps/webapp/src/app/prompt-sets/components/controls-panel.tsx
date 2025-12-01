@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useEffect } from "react";
 import type { Filters, SortOption } from "../types";
 import { Button } from "@/components/ui/button";
